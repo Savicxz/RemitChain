@@ -1,0 +1,43 @@
+﻿# Node/Next
+node_modules/
+**/node_modules/
+.next/
+**/.next/
+out/
+dist/
+build/
+.turbo/
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Env
+.env
+.env.local
+.env.*.local
+services/relayer/.env
+subquery/.env
+!.env.example
+!**/.env.example
+
+# Prisma
+*.db
+
+# SubQuery
+subquery/dist/
+subquery/.data/
+subquery/.cache/
+
+# Rust
+**/target/
+chain/target/
+
+# OS/Editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
