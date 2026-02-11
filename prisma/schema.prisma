@@ -1,0 +1,61 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id            String   @id @default(uuid())
+  walletAddress String   @unique
+  email         String?  @unique
+  kycTier       Int      @default(0)
+  kycProvider   String?
+  kycExternalId String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  remittances     Remittance[]
+  complianceFlags ComplianceFlag[]
+}
+
+model Remittance {
+  id              String   @id @default(uuid())
+  onChainId       String   @unique
+  sender          User     @relation(fields: [senderId], references: [id])
+  senderId        String
+  recipientWallet String
+  amount          Decimal
+  sourceAsset     String
+  destAsset       String
+  corridor        String
+  status          String
+  txHash          String?
+  blockNumber     BigInt?
+  agentWallet     String?
+  createdAt       DateTime @default(now())
+  completedAt     DateTime?
+}
+
+model ComplianceFlag {
+  id        String   @id @default(uuid())
+  user      User     @relation(fields: [userId], references: [id])
+  userId    String
+  reason    String
+  severity  String
+  resolved  Boolean  @default(false)
+  notes     String?
+  createdAt DateTime @default(now())
+}
+
+model TravelRuleRecord {
+  id              String   @id @default(uuid())
+  remittanceId    String
+  originatorName  String
+  originatorId    String
+  beneficiaryName String
+  beneficiaryId   String
+  sharedWith      String[]
+  createdAt       DateTime @default(now())
+}
