@@ -1,0 +1,24 @@
+﻿type Remittance @entity {
+  id: ID!
+  sender: String!
+  recipient: String!
+  amount: BigInt!
+  assetId: String!
+  corridor: String!
+  status: String!
+  txHash: String!
+  blockNumber: BigInt!
+  timestamp: Date!
+  cashOutAgent: String
+  completedAt: Date
+}
+
+type Dispute @entity {
+  id: ID!
+  remittanceId: String!
+  openedBy: String!
+  disputeType: String!
+  evidenceHash: String!
+  openedAt: BigInt!
+  status: String!
+}

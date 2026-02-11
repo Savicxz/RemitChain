@@ -1,0 +1,15 @@
+﻿{
+  "name": "remitchain-indexer",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "codegen": "subql codegen -f project.ts",
+    "build": "subql build -f project.ts"
+  },
+  "dependencies": {
+    "@subql/types": "^2.0.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.5"
+  }
+}
