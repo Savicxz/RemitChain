@@ -23,6 +23,8 @@ if (typesPath && fs.existsSync(typesPath)) {
   }
 }
 
+const dictionaryEnv = process.env.SUBQUERY_DICTIONARY_URL ?? process.env.SUBQUERY_DICTIONARY;
+
 const project: SubstrateProject = {
   name: 'remitchain-indexer',
   version: '0.1.0',
@@ -43,7 +45,7 @@ const project: SubstrateProject = {
   network: {
     chainId: chainIdEnv,
     endpoint: endpointEnv.split(',').map((value) => value.trim()),
-    dictionary: 'https://api.subquery.network/sq/subquery/polkadot-dictionary',
+    dictionary: dictionaryEnv && dictionaryEnv.trim() !== '' ? dictionaryEnv.trim() : undefined,
     types: customTypes,
   },
   dataSources: [

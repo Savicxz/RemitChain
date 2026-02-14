@@ -1,7 +1,7 @@
 import { create } from 'zustand';
-import { ASSETS, DEFAULT_ASSET_ID, TRANSACTIONS, type Transaction } from '@/lib/data';
+import { ASSETS, DEFAULT_ASSET_ID, type Transaction } from '@/lib/data';
 
-export type KycLevel = 1 | 2 | 3;
+export type KycLevel = 0 | 1 | 2 | 3;
 
 type SendMeta = {
   id?: string;
@@ -9,27 +9,23 @@ type SendMeta = {
   assetId?: string;
 };
 
-const DEFAULT_BALANCES: Record<string, number> = ASSETS.reduce(
-  (acc, asset) => {
-    if (asset.id === DEFAULT_ASSET_ID) {
-      acc[asset.id] = 14250;
-    } else {
-      acc[asset.id] = 5200;
-    }
-    return acc;
-  },
-  {} as Record<string, number>
-);
+const DEFAULT_BALANCES: Record<string, number> = ASSETS.reduce((acc, asset) => {
+  acc[asset.id] = 0;
+  return acc;
+}, {} as Record<string, number>);
 
 type WalletState = {
   isAuth: boolean;
+  isHydrating: boolean;
   kycLevel: KycLevel;
   balances: Record<string, number>;
   primaryAssetId: string;
   txHistory: Transaction[];
   activeAccount?: string;
-  connect: (account?: string) => void;
-  disconnect: () => void;
+  connect: (account?: string, kycLevel?: KycLevel) => void;
+  disconnect: () => Promise<void>;
+  hydrateSession: () => Promise<void>;
+  loadPortfolio: () => Promise<void>;
   setKycLevel: (level: KycLevel) => void;
   setBalance: (assetId: string, balance: number) => void;
   setPrimaryAssetId: (assetId: string) => void;
@@ -40,21 +36,77 @@ type WalletState = {
 
 export const useWalletStore = create<WalletState>((set, get) => ({
   isAuth: false,
-  kycLevel: 1,
+  isHydrating: false,
+  kycLevel: 0,
   balances: DEFAULT_BALANCES,
   primaryAssetId: DEFAULT_ASSET_ID,
-  txHistory: TRANSACTIONS,
+  txHistory: [],
   activeAccount: undefined,
-  connect: (account) => set({ isAuth: true, activeAccount: account }),
-  disconnect: () =>
+  connect: (account, kycLevel = 0) =>
+    set({ isAuth: true, activeAccount: account, kycLevel }),
+  disconnect: async () => {
+    try {
+      await fetch('/api/auth/logout', { method: 'POST' });
+    } catch {
+      // ignore logout errors
+    }
     set({
       isAuth: false,
-      kycLevel: 1,
+      kycLevel: 0,
       activeAccount: undefined,
       balances: DEFAULT_BALANCES,
       primaryAssetId: DEFAULT_ASSET_ID,
-      txHistory: TRANSACTIONS,
-    }),
+      txHistory: [],
+    });
+  },
+  hydrateSession: async () => {
+    set({ isHydrating: true });
+    try {
+      const response = await fetch('/api/auth/me');
+      if (!response.ok) {
+        set({ isAuth: false, activeAccount: undefined, isHydrating: false });
+        return;
+      }
+      const data = (await response.json()) as {
+        address?: string;
+        kycTier?: number;
+      };
+      if (data.address) {
+        set({
+          isAuth: true,
+          activeAccount: data.address,
+        kycLevel: (data.kycTier ?? 0) as KycLevel,
+          isHydrating: false,
+        });
+      } else {
+        set({ isAuth: false, activeAccount: undefined, isHydrating: false });
+      }
+    } catch {
+      set({ isAuth: false, activeAccount: undefined, isHydrating: false });
+    }
+  },
+  loadPortfolio: async () => {
+    try {
+      const response = await fetch('/api/portfolio');
+      if (!response.ok) {
+        return;
+      }
+      const data = (await response.json()) as {
+        balances?: Record<string, number>;
+        transactions?: Transaction[];
+      };
+      if (data.balances) {
+        set((state) => ({
+          balances: { ...state.balances, ...data.balances },
+        }));
+      }
+      if (data.transactions) {
+        set({ txHistory: data.transactions });
+      }
+    } catch {
+      // ignore load errors
+    }
+  },
   setKycLevel: (level) => set({ kycLevel: level }),
   setBalance: (assetId, balance) =>
     set((state) => ({ balances: { ...state.balances, [assetId]: balance } })),

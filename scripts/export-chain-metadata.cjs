@@ -22,8 +22,7 @@ function updateEnvValue(envPath, key, value) {
   if (!fs.existsSync(envPath)) {
     return false;
   }
-  const lines = fs.readFileSync(envPath, 'utf-8').split(/?
-/);
+  const lines = fs.readFileSync(envPath, 'utf-8').split(/\r?\n/);
   let found = false;
   const updated = lines.map((line) => {
     if (line.startsWith(`${key}=`)) {
@@ -35,8 +34,7 @@ function updateEnvValue(envPath, key, value) {
   if (!found) {
     updated.push(`${key}=${value}`);
   }
-  fs.writeFileSync(envPath, updated.join('
-'), 'utf-8');
+  fs.writeFileSync(envPath, updated.join('\n'), 'utf-8');
   return true;
 }
 

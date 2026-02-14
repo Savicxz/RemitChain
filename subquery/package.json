@@ -1,15 +1,25 @@
-﻿{
+{
   "name": "remitchain-indexer",
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "codegen": "subql codegen -f project.ts",
-    "build": "subql build -f project.ts"
+    "codegen": "subql codegen -f project.yaml",
+    "build": "subql build -f project.yaml",
+    "start:node": "subql-node -f project.yaml --db-schema remitchain-indexer",
+    "start:query": "subql-query --name remitchain-indexer --port 3001"
   },
   "dependencies": {
-    "@subql/types": "^2.0.0"
+    "@subql/types": "2.2.0"
   },
   "devDependencies": {
-    "typescript": "^5.4.5"
+    "@subql/cli": "6.6.2",
+    "@subql/node": "6.4.6",
+    "@subql/query": "2.25.0",
+    "typescript": "5.4.5"
+  },
+  "overrides": {
+    "graphql": "15.10.1",
+    "@polkadot/util": "14.0.1",
+    "@polkadot/util-crypto": "14.0.1"
   }
 }

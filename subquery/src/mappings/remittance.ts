@@ -60,7 +60,12 @@ function getEventId(event: SubstrateEvent) {
 }
 
 function getTxHash(event: SubstrateEvent) {
-  return event.extrinsic?.hash?.toString() ?? getEventId(event);
+  const extrinsic = event.extrinsic as unknown as {
+    hash?: { toString(): string };
+    extrinsic?: { hash?: { toString(): string } };
+  };
+  const hash = extrinsic?.hash ?? extrinsic?.extrinsic?.hash;
+  return hash ? hash.toString() : getEventId(event);
 }
 
 function getRemittanceId(event: SubstrateEvent, fallback?: string) {
@@ -89,6 +94,21 @@ function ensureRemittanceDefaults(remittance: Remittance) {
   if (!remittance.timestamp) remittance.timestamp = new Date();
 }
 
+function createRemittance(id: string) {
+  return new Remittance(
+    id,
+    'unknown',
+    'unknown',
+    BigInt(0),
+    'UNKNOWN',
+    'UNKNOWN',
+    'UNKNOWN',
+    id,
+    BigInt(0),
+    new Date()
+  );
+}
+
 export async function handleRemittanceSent(event: SubstrateEvent): Promise<void> {
   const mapped = mapEventData(event, REMITTANCE_SENT_FIELDS);
   const remittanceId = mapped.remittanceId ?? getTxHash(event);
@@ -98,16 +118,18 @@ export async function handleRemittanceSent(event: SubstrateEvent): Promise<void>
   const assetId = mapped.assetId ?? 'UNKNOWN';
   const corridor = mapped.corridor ?? 'UNKNOWN';
 
-  const remittance = new Remittance(remittanceId);
-  remittance.sender = sender;
-  remittance.recipient = recipient;
-  remittance.amount = amount;
-  remittance.assetId = assetId;
-  remittance.corridor = corridor;
-  remittance.status = 'SENT';
-  remittance.txHash = getTxHash(event);
-  remittance.blockNumber = getBlockNumber(event);
-  remittance.timestamp = getTimestamp(event);
+  const remittance = new Remittance(
+    remittanceId,
+    sender,
+    recipient,
+    amount,
+    assetId,
+    corridor,
+    'SENT',
+    getTxHash(event),
+    getBlockNumber(event),
+    getTimestamp(event)
+  );
 
   await remittance.save();
 }
@@ -118,7 +140,7 @@ export async function handleCashOutRequested(event: SubstrateEvent): Promise<voi
   const agent = mapped.agent;
 
   const existing = await Remittance.get(remittanceId);
-  const remittance = existing ?? new Remittance(remittanceId);
+  const remittance = existing ?? createRemittance(remittanceId);
   ensureRemittanceDefaults(remittance);
 
   remittance.status = 'CASH_OUT_REQUESTED';
@@ -138,7 +160,7 @@ export async function handleCashOutCompleted(event: SubstrateEvent): Promise<voi
   const agent = mapped.agent;
 
   const existing = await Remittance.get(remittanceId);
-  const remittance = existing ?? new Remittance(remittanceId);
+  const remittance = existing ?? createRemittance(remittanceId);
   ensureRemittanceDefaults(remittance);
 
   remittance.status = 'COMPLETED';
@@ -160,13 +182,15 @@ export async function handleDisputeOpened(event: SubstrateEvent): Promise<void> 
   const disputeType = mapped.disputeType ?? 'UNKNOWN';
   const evidenceHash = mapped.evidenceHash ?? 'UNKNOWN';
 
-  const dispute = new Dispute(`${remittanceId}-${getEventId(event)}`);
-  dispute.remittanceId = remittanceId;
-  dispute.openedBy = openedBy;
-  dispute.disputeType = disputeType;
-  dispute.evidenceHash = evidenceHash;
-  dispute.openedAt = getBlockNumber(event);
-  dispute.status = 'OPEN';
+  const dispute = new Dispute(
+    `${remittanceId}-${getEventId(event)}`,
+    remittanceId,
+    openedBy,
+    disputeType,
+    evidenceHash,
+    getBlockNumber(event),
+    'OPEN'
+  );
 
   await dispute.save();
 }

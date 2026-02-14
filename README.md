@@ -17,34 +17,51 @@ RemitChain is a full-stack remittance prototype with a gasless relayer, SubQuery
 - `chain/` - Substrate node + runtime + pallets
 - `scripts/` - Dev scripts
 
+## Project Philosophy
+RemitChain aims to democratize access to financial services by providing a transparent, low-fee remittance solution powered by blockchain technology. We believe in open-source collaboration to build a robust and inclusive financial infrastructure.
+
+## Tech Stack
+- **Frontend**: Next.js 14 (App Router), React, Tailwind CSS, Framer Motion
+- **Backend**: Fastify, Redis (Upstash)
+- **Blockchain**: Substrate, Polkadot API
+- **Database**: PostgreSQL, Prisma
+- **Indexer**: SubQuery
+
 ## Quick Start (Local)
 
-1. Create env files from examples:
-```powershell
-copy .env.example .env.local
-copy services\relayer\.env.example services\relayer\.env
-copy subquery\.env.example subquery\.env
-```
+1. **Environment Setup**:
+   ```powershell
+   copy .env.example .env.local
+   copy services\relayer\.env.example services\relayer\.env
+   copy subquery\.env.example subquery\.env
+   ```
 
-2. Start Docker services:
-```powershell
-docker compose --project-name remitchain --env-file .env.local up -d redis postgres
-```
+2. **Start Docker Services**:
+   ```powershell
+   docker compose --project-name remitchain --env-file .env.local up -d redis postgres
+   ```
 
-3. Run the chain (in a separate terminal):
-```powershell
-cargo run -p minimal-template-node --manifest-path chain\Cargo.toml -- --dev --tmp
-```
+3. **Run the Chain** (in a separate terminal):
+   ```powershell
+   cargo run -p minimal-template-node --manifest-path chain\Cargo.toml -- --dev --tmp
+   ```
 
-4. Export chain metadata + genesis hash:
-```powershell
-npm run chain:metadata:apply
-```
+4. **Export Chain Metadata**:
+   ```powershell
+   npm run chain:metadata:apply
+   ```
 
-5. Start dev services:
-```powershell
-scripts\start-dev.cmd
-```
+5. **Start Dev Services**:
+   ```powershell
+   scripts\start-dev.cmd
+   ```
+
+## Contributing
+We welcome contributions from the community! Whether it's reporting bugs, suggesting features, or submitting pull requests, your help is appreciated.
+
+- Please read our [Contributing Guidelines](CONTRIBUTING.md) to get started.
+- Review our [Code of Conduct](CODE_OF_CONDUCT.md) to ensure a welcoming environment.
+- Check out the [Issue Templates](.github/ISSUE_TEMPLATE/) for reporting bugs or requesting features.
 
 ## Notes
 - Local chain WS endpoint: `ws://127.0.0.1:9944`

@@ -21,6 +21,7 @@
     "@upstash/redis": "^1.31.0",
     "@walletconnect/ethereum-provider": "^2.23.4",
     "clsx": "^2.1.1",
+    "ethers": "^6.13.4",
     "firebase-admin": "^12.0.0",
     "framer-motion": "^11.0.0",
     "geist": "^1.7.0",

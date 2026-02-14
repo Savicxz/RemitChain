@@ -1,0 +1,7 @@
+{
+  "endpoint": "ws://127.0.0.1:9944",
+  "genesisHash": "0x0adf44937998ec1f7a2e6aa148cc9915212ddb0d69d5a800d56931223b62a61b",
+  "specName": "remitchain-runtime",
+  "specVersion": 0,
+  "transactionVersion": 1
+}

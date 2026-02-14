@@ -1,4 +1,26 @@
 services:
+  chain:
+    image: remitchain-node:latest
+    build:
+      context: ./chain
+    ports:
+      - "${CHAIN_P2P_PORT:-30333}:30333"
+      - "${CHAIN_RPC_PORT:-9933}:9933"
+      - "${CHAIN_WS_PORT:-9944}:9944"
+      - "${CHAIN_PROM_PORT:-9615}:9615"
+    command:
+      - --dev
+      - --tmp
+      - --state-pruning
+      - archive
+      - --blocks-pruning
+      - archive
+      - --rpc-external
+      - --unsafe-rpc-external
+      - --rpc-cors
+      - all
+    restart: unless-stopped
+
   redis:
     image: redis:7
     ports:

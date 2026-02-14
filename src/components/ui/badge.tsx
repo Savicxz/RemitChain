@@ -1,6 +1,6 @@
 ﻿import { cn } from '@/lib/utils';
 
-export function KycBadge({ level }: { level: 1 | 2 | 3 }) {
+export function KycBadge({ level }: { level: 0 | 1 | 2 | 3 }) {
   const isVerified = level >= 2;
 
   return (

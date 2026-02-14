@@ -13,9 +13,8 @@ schema:
   file: ./schema.graphql
 
 network:
-  chainId: '0x91b171bb158e2d3848fa23a9f1c25182fb8e20313b2c1eb49219da7a70ce90c3'
-  endpoint: ['https://polkadot.rpc.subquery.network/public']
-  dictionary: https://api.subquery.network/sq/subquery/polkadot-dictionary
+  chainId: '0x0adf44937998ec1f7a2e6aa148cc9915212ddb0d69d5a800d56931223b62a61b'
+  endpoint: ['ws://127.0.0.1:9944']
 
 dataSources:
   - kind: substrate/Runtime

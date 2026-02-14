@@ -20,6 +20,15 @@ model User {
   complianceFlags ComplianceFlag[]
 }
 
+model AuthNonce {
+  id        String   @id @default(uuid())
+  address   String   @unique
+  nonce     String
+  issuedAt  DateTime
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+}
+
 model Remittance {
   id              String   @id @default(uuid())
   onChainId       String   @unique

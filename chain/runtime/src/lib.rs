@@ -224,7 +224,6 @@ impl pallet_transaction_payment::Config for Runtime {
 impl pallet_minimal_template::Config for Runtime {}
 
 impl pallet_remitchain::Config for Runtime {
-	type RuntimeEvent = RuntimeEvent;
 	type MaxAssetIdLen = MaxAssetIdLen;
 	type MaxCorridorLen = MaxCorridorLen;
 	type MaxAmountLen = MaxAmountLen;

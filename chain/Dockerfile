@@ -4,7 +4,8 @@ WORKDIR /polkadot
 COPY . /polkadot
 
 RUN cargo fetch
-RUN cargo build --workspace --locked --release
+ENV CARGO_BUILD_JOBS=4
+RUN cargo build --workspace --locked --release -j 4
 
 FROM docker.io/parity/base-bin:latest
 

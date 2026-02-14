@@ -6,26 +6,28 @@ import { useWalletStore } from '@/store/use-wallet-store';
 
 export function AuthGate({ children }: { children: ReactNode }) {
   const isAuth = useWalletStore((state) => state.isAuth);
-  const kycLevel = useWalletStore((state) => state.kycLevel);
-  const setKycLevel = useWalletStore((state) => state.setKycLevel);
+  const isHydrating = useWalletStore((state) => state.isHydrating);
+  const hydrateSession = useWalletStore((state) => state.hydrateSession);
+  const loadPortfolio = useWalletStore((state) => state.loadPortfolio);
   const router = useRouter();
 
   useEffect(() => {
-    if (!isAuth) {
-      router.replace('/login');
-    }
-  }, [isAuth, router]);
+    hydrateSession();
+  }, [hydrateSession]);
 
   useEffect(() => {
-    if (!isAuth || kycLevel !== 1) {
-      return undefined;
+    if (!isHydrating && !isAuth) {
+      router.replace('/login');
     }
+  }, [isAuth, isHydrating, router]);
 
-    const timer = setTimeout(() => setKycLevel(2), 3000);
-    return () => clearTimeout(timer);
-  }, [isAuth, kycLevel, setKycLevel]);
+  useEffect(() => {
+    if (!isHydrating && isAuth) {
+      loadPortfolio();
+    }
+  }, [isAuth, isHydrating, loadPortfolio]);
 
-  if (!isAuth) {
+  if (isHydrating || !isAuth) {
     return null;
   }
 

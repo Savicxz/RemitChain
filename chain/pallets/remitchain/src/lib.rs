@@ -5,7 +5,7 @@ extern crate alloc;
 use alloc::vec::Vec;
 use frame::prelude::*;
 use polkadot_sdk::polkadot_sdk_frame as frame;
-use polkadot_sdk::sp_runtime::traits::Hash;
+use polkadot_sdk::frame_system::pallet_prelude::BlockNumberFor;
 
 pub use pallet::*;
 
@@ -26,10 +26,7 @@ pub mod pallet {
 	}
 
 	#[pallet::config]
-	pub trait Config: frame_system::Config {
-		type RuntimeEvent: From<Event<Self>>
-			+ IsType<<Self as frame_system::Config>::RuntimeEvent>;
-
+	pub trait Config: polkadot_sdk::frame_system::Config {
 		#[pallet::constant]
 		type MaxAssetIdLen: Get<u32>;
 		#[pallet::constant]
@@ -53,12 +50,13 @@ pub mod pallet {
 	type DisputeTypeOf<T> = BoundedVec<u8, <T as Config>::MaxDisputeTypeLen>;
 	type EvidenceHashOf<T> = BoundedVec<u8, <T as Config>::MaxEvidenceHashLen>;
 	type RemittanceIdOf<T> = <T as frame_system::Config>::Hash;
+	type BlockNumberOf<T> = BlockNumberFor<T>;
 	type RemittanceOf<T> = RemittanceRecord<
 		<T as frame_system::Config>::AccountId,
 		AssetIdOf<T>,
 		CorridorOf<T>,
 		AmountOf<T>,
-		<T as frame_system::Config>::BlockNumber,
+		BlockNumberOf<T>,
 	>;
 
 	#[pallet::storage]
@@ -84,7 +82,7 @@ pub mod pallet {
 			CorridorOf<T>,
 		),
 		/// Cash out requested by an agent. [remittance_id, agent, timeout_block]
-		CashOutRequested(RemittanceIdOf<T>, T::AccountId, T::BlockNumber),
+		CashOutRequested(RemittanceIdOf<T>, T::AccountId, BlockNumberOf<T>),
 		/// Cash out completed by an agent. [remittance_id, agent]
 		CashOutCompleted(RemittanceIdOf<T>, T::AccountId),
 		/// Dispute opened. [remittance_id, opened_by, dispute_type, evidence_hash]
@@ -111,13 +109,13 @@ pub mod pallet {
 			amount: AmountOf<T>,
 			corridor: CorridorOf<T>,
 			nonce: u64,
-			deadline: T::BlockNumber,
+			deadline: BlockNumberOf<T>,
 			chain_id: u64,
 		) -> DispatchResult {
 			let _relayer = ensure_signed(origin)?;
 
 			ensure!(chain_id == T::ChainId::get(), Error::<T>::InvalidChainId);
-			let now = <frame_system::Pallet<T>>::block_number();
+			let now = <polkadot_sdk::frame_system::Pallet<T>>::block_number();
 			ensure!(deadline >= now, Error::<T>::DeadlineExpired);
 
 			let current_nonce = RelayerNonces::<T>::get(&sender);
@@ -164,7 +162,7 @@ pub mod pallet {
 			origin: OriginFor<T>,
 			remittance_id: RemittanceIdOf<T>,
 			agent: T::AccountId,
-			timeout_block: T::BlockNumber,
+			timeout_block: BlockNumberOf<T>,
 		) -> DispatchResult {
 			let _who = ensure_signed(origin)?;
 			ensure!(Remittances::<T>::contains_key(remittance_id), Error::<T>::RemittanceNotFound);
