@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "teammates": [
+    {
+      "id": "alice",
+      "devIndex": 0,
+      "address": "5FKxrLQM24ZhLxcaQfJR3uMxMZh5gU6E4CP3yghPJLzCDnHN",
+      "seed": "//Alice/0"
+    },
+    {
+      "id": "bob",
+      "devIndex": 1,
+      "address": "5FUdx3xPJdh2ZdD7DwPQRN2eMAFVUKpfPeoEZZiSraow9iVQ",
+      "seed": "//Alice/1"
+    }
+  ]
+}

@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "dev:remote": "bash scripts/start-dev.sh",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
@@ -11,7 +12,9 @@
     "prisma:migrate": "prisma migrate dev",
     "prisma:deploy": "prisma migrate deploy",
     "chain:metadata": "node scripts/export-chain-metadata.cjs",
-    "chain:metadata:apply": "node scripts/export-chain-metadata.cjs --apply-env"
+    "chain:metadata:apply": "node scripts/export-chain-metadata.cjs --apply-env",
+    "seed:remote": "node scripts/seed-remote-dev.cjs",
+    "reset:remote": "bash ops/reset-dev-chain.sh"
   },
   "dependencies": {
     "@polkadot/api": "^16.5.4",

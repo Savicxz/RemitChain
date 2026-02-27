@@ -18,6 +18,7 @@ pnpm-debug.log*
 .env
 .env.local
 .env.*.local
+.env.runtime
 services/relayer/.env
 subquery/.env
 !.env.example
@@ -30,6 +31,8 @@ subquery/.env
 subquery/dist/
 subquery/.data/
 subquery/.cache/
+ops/dev-status.json
+ops/seed-output.json
 
 # Rust
 **/target/

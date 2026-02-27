@@ -1,0 +1,118 @@
+services:
+  chain:
+    image: ${CHAIN_IMAGE:-ghcr.io/example/remitchain-node:main}
+    restart: unless-stopped
+    ports:
+      - "${CHAIN_P2P_PORT:-30333}:30333"
+      - "${CHAIN_RPC_PORT:-9933}:9933"
+      - "${CHAIN_WS_PORT:-9944}:9944"
+      - "${CHAIN_PROM_PORT:-9615}:9615"
+    command:
+      - --dev
+      - --tmp
+      - --state-pruning
+      - archive
+      - --blocks-pruning
+      - archive
+      - --rpc-external
+      - --unsafe-rpc-external
+      - --rpc-cors
+      - all
+    cpus: "2.0"
+    mem_limit: 2g
+
+  redis:
+    image: redis:7
+    restart: unless-stopped
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_vm_data:/data
+    cpus: "0.25"
+    mem_limit: 256m
+
+  postgres:
+    image: postgres:17
+    restart: unless-stopped
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-remitchain}
+    volumes:
+      - postgres_vm_data:/var/lib/postgresql/data
+    cpus: "0.75"
+    mem_limit: 1g
+
+  subquery-node:
+    image: node:20-bookworm
+    restart: unless-stopped
+    working_dir: /workspace/subquery
+    volumes:
+      - ./:/workspace
+    environment:
+      SUBQUERY_ENDPOINT: ${CHAIN_WS_URL:-ws://chain:9944}
+      SUBQUERY_CHAIN_ID: ${SUBQUERY_CHAIN_ID:-}
+      SUBQUERY_NAME: ${SUBQUERY_NAME:-remitchain-indexer}
+      DB_HOST: postgres
+      DB_PORT: ${POSTGRES_PORT:-5432}
+      DB_USER: ${POSTGRES_USER:-postgres}
+      DB_PASS: ${POSTGRES_PASSWORD:-postgres}
+      DB_DATABASE: ${POSTGRES_DB:-remitchain}
+    command: >
+      bash -lc "npm ci && npm run codegen && npm run build &&
+      npx subql-node -f project.ts --db-schema ${SUBQUERY_NAME:-remitchain-indexer} --port ${SUBQUERY_NODE_PORT:-3000}"
+    depends_on:
+      - chain
+      - postgres
+    ports:
+      - "${SUBQUERY_NODE_PORT:-3000}:3000"
+    cpus: "0.50"
+    mem_limit: 1g
+
+  subquery-query:
+    image: node:20-bookworm
+    restart: unless-stopped
+    working_dir: /workspace/subquery
+    volumes:
+      - ./:/workspace
+    environment:
+      SUBQUERY_NAME: ${SUBQUERY_NAME:-remitchain-indexer}
+    command: >
+      bash -lc "npm ci &&
+      npx subql-query --name ${SUBQUERY_NAME:-remitchain-indexer} --port ${SUBQUERY_QUERY_PORT:-3001}"
+    depends_on:
+      - subquery-node
+    ports:
+      - "${SUBQUERY_QUERY_PORT:-3001}:3001"
+    cpus: "0.50"
+    mem_limit: 768m
+
+  relayer:
+    image: node:20-bookworm
+    restart: unless-stopped
+    working_dir: /workspace/services/relayer
+    volumes:
+      - ./:/workspace
+    env_file:
+      - .env.local
+      - services/relayer/.env
+    environment:
+      CHAIN_WS_URL: ${CHAIN_WS_URL:-ws://chain:9944}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379}
+      SUBQUERY_GRAPHQL_URL: ${SUBQUERY_GRAPHQL_URL:-http://subquery-query:3001}
+    command: >
+      bash -lc "npm ci && npm run dev"
+    depends_on:
+      - chain
+      - redis
+    ports:
+      - "${RELAYER_PORT:-8787}:8787"
+    cpus: "0.50"
+    mem_limit: 768m
+
+volumes:
+  redis_vm_data:
+  postgres_vm_data:

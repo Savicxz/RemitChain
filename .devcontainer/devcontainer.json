@@ -1,0 +1,24 @@
+{
+  "name": "RemitChain Codespace",
+  "image": "mcr.microsoft.com/devcontainers/javascript-node:1-20-bookworm",
+  "features": {
+    "ghcr.io/devcontainers/features/rust:1": {
+      "version": "latest"
+    },
+    "ghcr.io/devcontainers/features/docker-in-docker:2": {}
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-azuretools.vscode-docker",
+        "rust-lang.rust-analyzer",
+        "ms-vscode.powershell"
+      ]
+    }
+  },
+  "containerEnv": {
+    "CHAIN_MODE": "remote",
+    "REMOTE_DEV_STRICT": "true"
+  },
+  "postCreateCommand": "bash .devcontainer/scripts/bootstrap-vpn.sh && npm ci && npm ci --prefix services/relayer && npm ci --prefix subquery"
+}

@@ -56,6 +56,21 @@ RemitChain aims to democratize access to financial services by providing a trans
    scripts\start-dev.cmd
    ```
 
+## Remote Team Dev (Codespaces + Shared VM)
+
+1. Copy `.env.codespaces.example` to `.env.local` and set `DEV_IDENTITY` + `REMOTE_STATUS_URL`.
+2. Start remote mode from Codespaces:
+   ```bash
+   npm run dev:remote
+   ```
+3. `scripts/start-dev.sh` fetches `/dev/status`, writes `.env.runtime`, and enforces mapped dev identity.
+4. Chain/session drift is detected in-app; reconnect wallet when prompted.
+
+Reset controls (VM):
+- `GET /dev/status` on relayer for handshake/runtime status
+- `POST /dev/reset` with `X-Reset-Token` to trigger `ops/reset-dev-chain.sh`
+- `GET /dev/reset/:id` to follow reset progress
+
 ## Contributing
 We welcome contributions from the community! Whether it's reporting bugs, suggesting features, or submitting pull requests, your help is appreciated.
 
@@ -70,9 +85,13 @@ We welcome contributions from the community! Whether it's reporting bugs, sugges
 
 ## Useful Scripts
 - `npm run dev` - Run Next.js app
+- `npm run dev:remote` - Start in remote mode using `/dev/status` handshake
 - `npm run chain:metadata:apply` - Export metadata + update envs
+- `npm run seed:remote` - Build deterministic seed payload for remote chain session
+- `npm run reset:remote` - Run VM reset pipeline (chain restart + seed + indexer schema reset)
 - `scripts\start-dev.cmd` - Start all services
 - `scripts\clean-dev.cmd` - Clean workspace and re-install
 
 ## Docs
 See `docs/truth.md` for the source-of-truth specification and `docs/plan.md` for the roadmap.
+See `docs/remote-dev.md` for the shared VM + Codespaces runbook.
