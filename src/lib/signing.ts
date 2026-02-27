@@ -1,4 +1,7 @@
-﻿import { stringToHex } from '@polkadot/util';
+import { stringToHex } from '@polkadot/util';
+
+const DRIFT_KEY = 'remit:chain:drifted';
+const EXPECTED_ACCOUNT = process.env.NEXT_PUBLIC_DEV_ACCOUNT_ADDRESS;
 
 export type SigningPayload = {
   from: string;
@@ -87,6 +90,14 @@ export async function signRemittancePayload(
   },
   appName: string = 'RemitChain'
 ): Promise<SignedPayload> {
+  if (typeof window !== 'undefined' && window.localStorage.getItem(DRIFT_KEY) === 'true') {
+    throw new Error('Chain session changed. Reconnect wallet before signing.');
+  }
+
+  if (EXPECTED_ACCOUNT && input.from !== EXPECTED_ACCOUNT) {
+    throw new Error(`Use assigned dev account ${EXPECTED_ACCOUNT} for remote mode.`);
+  }
+
   const { web3Enable, web3Accounts, web3FromSource } = await import(
     '@polkadot/extension-dapp'
   );
@@ -158,3 +169,4 @@ export async function signRemittancePayload(
     payload: message,
   };
 }
+

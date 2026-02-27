@@ -16,6 +16,7 @@ const DEFAULT_DEADLINE_BLOCKS = Number(process.env.NEXT_PUBLIC_DEADLINE_BLOCKS ?
 const SIGNATURE_DEBUG =
   process.env.NEXT_PUBLIC_SIGNATURE_DEBUG === 'true' && process.env.NODE_ENV !== 'production';
 const CHAIN_ID = process.env.NEXT_PUBLIC_CHAIN_ID;
+const EXPECTED_ACCOUNT = process.env.NEXT_PUBLIC_DEV_ACCOUNT_ADDRESS;
 const POLL_BASE_MS = 2000;
 const POLL_MAX_MS = 10000;
 const POLL_TIMEOUT_MS = 2 * 60 * 1000;
@@ -175,6 +176,18 @@ export function SendFlow({
 
     setSigningError(null);
     setIsSubmitting(true);
+
+    if (typeof window !== 'undefined' && window.localStorage.getItem('remit:chain:drifted') === 'true') {
+      setSigningError('Chain session changed. Reconnect wallet before sending.');
+      setIsSubmitting(false);
+      return;
+    }
+
+    if (EXPECTED_ACCOUNT && activeAccount && activeAccount !== EXPECTED_ACCOUNT) {
+      setSigningError(`Assigned dev account is ${EXPECTED_ACCOUNT}. Switch wallet account to continue.`);
+      setIsSubmitting(false);
+      return;
+    }
 
     let signature: string | undefined;
     let nonce: number | undefined;

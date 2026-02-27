@@ -3,6 +3,7 @@
 import { useEffect, type ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import { useWalletStore } from '@/store/use-wallet-store';
+import { ChainSessionGuard } from '@/components/chain-session-guard';
 
 export function AuthGate({ children }: { children: ReactNode }) {
   const isAuth = useWalletStore((state) => state.isAuth);
@@ -31,6 +32,11 @@ export function AuthGate({ children }: { children: ReactNode }) {
     return null;
   }
 
-  return <>{children}</>;
+  return (
+    <>
+      <ChainSessionGuard />
+      {children}
+    </>
+  );
 }
 

@@ -13,6 +13,7 @@ export type WalletConnection = {
 export async function connectPolkadotWallet(
   appName: string = 'RemitChain'
 ): Promise<WalletConnection> {
+  const expectedAddress = process.env.NEXT_PUBLIC_DEV_ACCOUNT_ADDRESS;
   const { web3Accounts, web3Enable } = await import('@polkadot/extension-dapp');
   const extensions = await web3Enable(appName);
   if (!extensions || extensions.length === 0) {
@@ -26,9 +27,13 @@ export async function connectPolkadotWallet(
     source: account.meta.source,
   }));
 
+  const activeAccount = expectedAddress
+    ? formatted.find((account) => account.address === expectedAddress)
+    : formatted[0];
+
   return {
     accounts: formatted,
-    activeAccount: formatted[0],
+    activeAccount,
     hasExtension: true,
   };
 }

@@ -37,6 +37,13 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
   }
 
+  if (process.env.DEV_ACCOUNT_ADDRESS && from !== process.env.DEV_ACCOUNT_ADDRESS) {
+    return NextResponse.json(
+      { error: `Sender must match assigned dev account ${process.env.DEV_ACCOUNT_ADDRESS}` },
+      { status: 400 }
+    );
+  }
+
   const walletLimit = await checkRateLimit(`remit:wallet:${from}`);
   if (!walletLimit.success) {
     return NextResponse.json({ error: 'Wallet rate limit exceeded' }, { status: 429 });
@@ -51,6 +58,8 @@ export async function POST(request: Request) {
         headers: {
           'Content-Type': 'application/json',
           ...(idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : {}),
+          ...(process.env.DEV_IDENTITY ? { 'x-dev-identity': process.env.DEV_IDENTITY } : {}),
+          ...(process.env.DEV_INDEX ? { 'x-dev-index': process.env.DEV_INDEX } : {}),
           ...(process.env.RELAYER_API_KEY
             ? { 'x-relayer-api-key': process.env.RELAYER_API_KEY }
             : {}),

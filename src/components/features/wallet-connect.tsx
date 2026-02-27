@@ -13,6 +13,7 @@ export function WalletConnectButton({ className }: { className?: string }) {
   const connect = useWalletStore((state) => state.connect);
   const [isConnecting, setIsConnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const expectedAccount = process.env.NEXT_PUBLIC_DEV_ACCOUNT_ADDRESS;
 
   const handleConnect = async () => {
     setError(null);
@@ -22,7 +23,11 @@ export function WalletConnectButton({ className }: { className?: string }) {
       const { activeAccount, hasExtension } = await connectPolkadotWallet();
 
       if (hasExtension && !activeAccount) {
-        setError('No Polkadot accounts found in the extension.');
+        if (expectedAccount) {
+          setError(`Missing assigned dev account ${expectedAccount} in the extension.`);
+        } else {
+          setError('No Polkadot accounts found in the extension.');
+        }
         return;
       }
 

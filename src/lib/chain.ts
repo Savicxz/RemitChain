@@ -56,7 +56,7 @@ export async function getApi() {
   });
 
   apiProvider = provider;
-  apiPromise = await ApiPromise.create({ provider, types: customTypes });
+  apiPromise = await ApiPromise.create({ provider, types: customTypes as any });
   return apiPromise;
 }
 

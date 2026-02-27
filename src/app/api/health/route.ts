@@ -34,7 +34,7 @@ export async function GET() {
     const api = await getApi();
     const block = await api.query.system.number();
     response.chain.ok = true;
-    response.chain.block = block.toNumber();
+    response.chain.block = Number(block.toString());
   } catch (error) {
     response.ok = false;
     response.chain.error = (error as Error).message;

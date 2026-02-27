@@ -7,7 +7,7 @@ type ButtonVariant = 'primary' | 'secondary' | 'outline' | 'ghost';
 
 export type ButtonProps = React.ButtonHTMLAttributes<HTMLButtonElement> & {
   variant?: ButtonVariant;
-  icon?: React.ComponentType<{ size?: number; className?: string }>;
+  icon?: React.ComponentType<{ size?: string | number; className?: string }>;
 };
 
 export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(

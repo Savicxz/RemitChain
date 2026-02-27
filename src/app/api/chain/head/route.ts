@@ -7,7 +7,7 @@ export async function GET() {
   try {
     const api = await getApi();
     const block = await api.query.system.number();
-    return NextResponse.json({ block: block.toNumber() });
+    return NextResponse.json({ block: Number(block.toString()) });
   } catch {
     return NextResponse.json({ error: 'Chain unavailable' }, { status: 503 });
   }

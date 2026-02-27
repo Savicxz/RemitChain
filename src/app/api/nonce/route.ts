@@ -10,6 +10,13 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: 'Address is required' }, { status: 400 });
   }
 
+  if (process.env.DEV_ACCOUNT_ADDRESS && address !== process.env.DEV_ACCOUNT_ADDRESS) {
+    return NextResponse.json(
+      { error: `Address must match assigned dev account ${process.env.DEV_ACCOUNT_ADDRESS}` },
+      { status: 400 }
+    );
+  }
+
   const relayerUrl = process.env.RELAYER_URL;
   if (!relayerUrl) {
     return NextResponse.json({ error: 'Relayer not configured' }, { status: 501 });
@@ -18,6 +25,7 @@ export async function GET(request: Request) {
   try {
     const response = await fetch(`${relayerUrl}/nonce/${encodeURIComponent(address)}`, {
       headers: {
+        ...(process.env.DEV_IDENTITY ? { 'x-dev-identity': process.env.DEV_IDENTITY } : {}),
         ...(process.env.RELAYER_API_KEY ? { 'x-relayer-api-key': process.env.RELAYER_API_KEY } : {}),
       },
     });
