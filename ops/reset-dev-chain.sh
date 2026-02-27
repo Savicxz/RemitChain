@@ -6,6 +6,7 @@ cd "$ROOT_DIR"
 
 COMPOSE_FILE="${VM_COMPOSE_FILE:-docker-compose.vm.yml}"
 COMPOSE_PROJECT="${COMPOSE_PROJECT_NAME:-remitchain-vm}"
+ENV_FILE="${VM_ENV_FILE:-$ROOT_DIR/.env.local}"
 CHAIN_WS_URL="${CHAIN_WS_URL:-ws://127.0.0.1:9944}"
 SUBQUERY_SCHEMA="${SUBQUERY_NAME:-remitchain-indexer}"
 STATUS_FILE="${DEV_STATUS_FILE:-$ROOT_DIR/ops/dev-status.json}"
@@ -15,10 +16,15 @@ POSTGRES_PASSWORD="${POSTGRES_PASSWORD:-postgres}"
 POSTGRES_DB="${POSTGRES_DB:-remitchain}"
 
 compose_cmd() {
+  local env_args=()
+  if [[ -f "$ENV_FILE" ]]; then
+    env_args=(--env-file "$ENV_FILE")
+  fi
+
   if docker compose version >/dev/null 2>&1; then
-    docker compose -f "$COMPOSE_FILE" --project-name "$COMPOSE_PROJECT" "$@"
+    docker compose -f "$COMPOSE_FILE" --project-name "$COMPOSE_PROJECT" "${env_args[@]}" "$@"
   else
-    docker-compose -f "$COMPOSE_FILE" -p "$COMPOSE_PROJECT" "$@"
+    docker-compose -f "$COMPOSE_FILE" -p "$COMPOSE_PROJECT" "${env_args[@]}" "$@"
   fi
 }
 

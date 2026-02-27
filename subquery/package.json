@@ -3,8 +3,8 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "codegen": "subql codegen -f project.ts",
-    "build": "subql build -f project.ts",
+    "codegen": "subql codegen project.ts",
+    "build": "subql build project.ts",
     "start:node": "node scripts/start-node.cjs",
     "start:query": "node scripts/start-query.cjs"
   },

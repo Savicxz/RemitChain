@@ -62,8 +62,8 @@ services:
       DB_PASS: ${POSTGRES_PASSWORD:-postgres}
       DB_DATABASE: ${POSTGRES_DB:-remitchain}
     command: >
-      bash -lc "npm ci && npm run codegen && npm run build &&
-      npx subql-node -f project.ts --db-schema ${SUBQUERY_NAME:-remitchain-indexer} --port ${SUBQUERY_NODE_PORT:-3000}"
+      bash -lc "npm ci --include=dev && npm run codegen && npm run build &&
+      ./node_modules/.bin/subql-node -f project.ts --db-schema ${SUBQUERY_NAME:-remitchain-indexer} --port ${SUBQUERY_NODE_PORT:-3000}"
     depends_on:
       - chain
       - postgres
@@ -80,9 +80,14 @@ services:
       - ./:/workspace
     environment:
       SUBQUERY_NAME: ${SUBQUERY_NAME:-remitchain-indexer}
+      DB_HOST: postgres
+      DB_PORT: ${POSTGRES_PORT:-5432}
+      DB_USER: ${POSTGRES_USER:-postgres}
+      DB_PASS: ${POSTGRES_PASSWORD:-postgres}
+      DB_DATABASE: ${POSTGRES_DB:-remitchain}
     command: >
-      bash -lc "npm ci &&
-      npx subql-query --name ${SUBQUERY_NAME:-remitchain-indexer} --port ${SUBQUERY_QUERY_PORT:-3001}"
+      bash -lc "npm ci --include=dev &&
+      ./node_modules/.bin/subql-query --name ${SUBQUERY_NAME:-remitchain-indexer} --indexer http://subquery-node:${SUBQUERY_NODE_PORT:-3000} --port ${SUBQUERY_QUERY_PORT:-3001}"
     depends_on:
       - subquery-node
     ports:
