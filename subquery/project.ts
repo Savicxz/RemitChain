@@ -1,4 +1,3 @@
-import { SubstrateProject } from '@subql/types';
 import fs from 'fs';
 
 const endpointEnv =
@@ -25,7 +24,7 @@ if (typesPath && fs.existsSync(typesPath)) {
 
 const dictionaryEnv = process.env.SUBQUERY_DICTIONARY_URL ?? process.env.SUBQUERY_DICTIONARY;
 
-const project: SubstrateProject = {
+const project = {
   name: 'remitchain-indexer',
   version: '0.1.0',
   specVersion: '1.0.0',

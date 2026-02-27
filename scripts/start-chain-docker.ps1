@@ -16,16 +16,38 @@ function Has-Command([string]$name) {
   return $null -ne (Get-Command $name -ErrorAction SilentlyContinue)
 }
 
+function Resolve-DockerComposeCommand() {
+  if (Has-Command "docker") {
+    try {
+      docker compose version 2>$null | Out-Null
+      if ($LASTEXITCODE -eq 0) {
+        return [pscustomobject]@{
+          Command = "docker"
+          Args = @("compose")
+          ProjectFlag = "--project-name"
+        }
+      }
+    } catch {}
+  }
+
+  if (Has-Command "docker-compose") {
+    try {
+      docker-compose version 2>$null | Out-Null
+      if ($LASTEXITCODE -eq 0) {
+        return [pscustomobject]@{
+          Command = "docker-compose"
+          Args = @()
+          ProjectFlag = "-p"
+        }
+      }
+    } catch {}
+  }
+
+  return $null
+}
+
 function Has-DockerCompose() {
-  if (!(Has-Command "docker")) {
-    return $false
-  }
-  try {
-    docker compose version | Out-Null
-    return $true
-  } catch {
-    return $false
-  }
+  return $null -ne (Resolve-DockerComposeCommand)
 }
 
 function Ensure-Docker {
@@ -59,8 +81,13 @@ function Ensure-Docker {
 }
 
 function Invoke-DockerCompose([string[]]$composeArgs, [bool]$useBuildKit) {
+  $cmd = Resolve-DockerComposeCommand
+  if (-not $cmd) { return 1 }
   $env:DOCKER_BUILDKIT = if ($useBuildKit) { "1" } else { "0" }
-  & docker @composeArgs
+  $fullArgs = @()
+  if ($cmd.Args) { $fullArgs += $cmd.Args }
+  if ($composeArgs) { $fullArgs += $composeArgs }
+  & $cmd.Command @fullArgs
   return $LASTEXITCODE
 }
 
@@ -93,7 +120,15 @@ $useCompose = (Test-Path $composeFile) -and (Has-DockerCompose)
 
 if ($useCompose) {
   $envFile = Join-Path $root ".env.local"
-  $composeArgs = @("compose", "--project-name", $composeProject)
+  $composeCmd = Resolve-DockerComposeCommand
+  if (-not $composeCmd) {
+    Write-Host "Docker compose command not available."
+    exit 1
+  }
+  $composeArgs = @()
+  if ($composeProject) {
+    $composeArgs += @($composeCmd.ProjectFlag, $composeProject)
+  }
   if (Test-Path $envFile) {
     $composeArgs += @("--env-file", $envFile)
   }

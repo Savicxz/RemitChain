@@ -75,10 +75,10 @@ function ConvertFrom-DatabaseUrl([string]$url) {
   }
 
   return [pscustomobject]@{
-    Host = $uri.Host
-    Port = if ($uri.Port -gt 0) { $uri.Port } else { 5432 }
-    User = $dbUser
-    Pass = $dbPass
+    Host     = $uri.Host
+    Port     = if ($uri.Port -gt 0) { $uri.Port } else { 5432 }
+    User     = $dbUser
+    Pass     = $dbPass
     Database = $dbName
   }
 }
@@ -87,13 +87,79 @@ function Test-CommandAvailability([string]$name) {
   return $null -ne (Get-Command $name -ErrorAction SilentlyContinue)
 }
 
+$script:ComposeCommand = $null
+
+function Resolve-DockerComposeCommand() {
+  if ($script:ComposeCommand) { return $script:ComposeCommand }
+
+  if (Test-CommandAvailability "docker") {
+    try {
+      docker compose version 2>$null | Out-Null
+      if ($LASTEXITCODE -eq 0) {
+        $script:ComposeCommand = [pscustomobject]@{
+          Command     = "docker"
+          Args        = @("compose")
+          ProjectFlag = "--project-name"
+        }
+        return $script:ComposeCommand
+      }
+    }
+    catch {}
+  }
+
+  if (Test-CommandAvailability "docker-compose") {
+    try {
+      docker-compose version 2>$null | Out-Null
+      if ($LASTEXITCODE -eq 0) {
+        $script:ComposeCommand = [pscustomobject]@{
+          Command     = "docker-compose"
+          Args        = @()
+          ProjectFlag = "-p"
+        }
+        return $script:ComposeCommand
+      }
+    }
+    catch {}
+  }
+
+  return $null
+}
+
 function Test-DockerComposeAvailability() {
-  if (!(Test-CommandAvailability "docker")) { return $false }
-  try {
-    docker compose version | Out-Null
-    return $true
-  } catch {
-    return $false
+  return $null -ne (Resolve-DockerComposeCommand)
+}
+
+function Invoke-DockerCompose {
+  param(
+    [Parameter(ValueFromPipeline = $true)]
+    $InputObject,
+    [Parameter(Position = 0)]
+    [string[]]$ComposeArgs
+  )
+
+  begin {
+    $cmd = Resolve-DockerComposeCommand
+    if (-not $cmd) { return }
+    $fullArgs = @()
+    if ($cmd.Args) { $fullArgs += $cmd.Args }
+    if ($ComposeArgs) { $fullArgs += $ComposeArgs }
+    $inputBuffer = @()
+  }
+
+  process {
+    if ($PSBoundParameters.ContainsKey('InputObject')) {
+      $inputBuffer += $InputObject
+    }
+  }
+
+  end {
+    if (-not $cmd) { return }
+    if ($inputBuffer.Count -gt 0) {
+      $inputBuffer | & $cmd.Command @fullArgs
+    }
+    else {
+      & $cmd.Command @fullArgs
+    }
   }
 }
 
@@ -101,7 +167,8 @@ function Test-PortInUse([int]$port) {
   try {
     $conn = Get-NetTCPConnection -LocalPort $port -ErrorAction SilentlyContinue
     return $null -ne $conn
-  } catch {
+  }
+  catch {
     return $false
   }
 }
@@ -132,7 +199,8 @@ function Get-UriPort([string]$url, [int]$fallback) {
   try {
     $uri = [System.Uri]$url
     if ($uri.Port -gt 0) { return $uri.Port }
-  } catch {
+  }
+  catch {
     return $fallback
   }
   return $fallback
@@ -154,7 +222,8 @@ function Test-LocalHost([string]$inputHost) {
 function Get-ProcessCommandLine([int]$procId) {
   try {
     return (Get-CimInstance Win32_Process -Filter ("ProcessId={0}" -f $procId)).CommandLine
-  } catch {
+  }
+  catch {
     return $null
   }
 }
@@ -207,7 +276,8 @@ function Test-CommandLineRunning([string]$token, [string]$pathToken) {
       $_.CommandLine -and $_.CommandLine -like "*$token*" -and $_.CommandLine -like "*$pathToken*"
     } | Select-Object -First 1
     return $null -ne $match
-  } catch {
+  }
+  catch {
     return $false
   }
 }
@@ -225,7 +295,8 @@ function Resolve-ProcessByCommandTokenMatch([string]$token, [string]$pathToken, 
         $stoppedAny = $true
       }
     }
-  } catch {
+  }
+  catch {
     return $false
   }
 
@@ -245,7 +316,12 @@ function Wait-ForProcess([string]$token, [string]$pathToken, [int]$timeoutSecond
 }
 
 function Get-ComposeEnvArg([string]$projectName, [string]$envFile) {
-  $composeArgs = @("compose", "--project-name", $projectName)
+  $cmd = Resolve-DockerComposeCommand
+  if (-not $cmd) { return $null }
+  $composeArgs = @()
+  if ($projectName) {
+    $composeArgs += @($cmd.ProjectFlag, $projectName)
+  }
   if ($envFile -and (Test-Path $envFile)) {
     $composeArgs += @("--env-file", $envFile)
   }
@@ -255,20 +331,23 @@ function Get-ComposeEnvArg([string]$projectName, [string]$envFile) {
 function Test-ComposeServiceRunning([string]$projectName, [string]$service) {
   if (-not (Test-DockerComposeAvailability)) { return $false }
   try {
-    $id = docker compose --project-name $projectName ps --status running -q $service
+    $composeArgs = Get-ComposeEnvArg $projectName $null
+    if (-not $composeArgs) { return $false }
+    $id = Invoke-DockerCompose ($composeArgs + @("ps", "--status", "running", "-q", $service))
     if (-not [string]::IsNullOrWhiteSpace($id)) {
       return $true
     }
 
     # Fallback for older compose versions that may not support --status.
-    $id = docker compose --project-name $projectName ps -q $service
+    $id = Invoke-DockerCompose ($composeArgs + @("ps", "-q", $service))
     if ([string]::IsNullOrWhiteSpace($id)) {
       return $false
     }
 
     $isRunning = docker inspect -f "{{.State.Running}}" $id 2>$null
     return ($isRunning -eq "true")
-  } catch {
+  }
+  catch {
     return $false
   }
 }
@@ -276,9 +355,12 @@ function Test-ComposeServiceRunning([string]$projectName, [string]$service) {
 function Invoke-ComposeServiceStop([string]$projectName, [string]$service) {
   if (-not (Test-DockerComposeAvailability)) { return $false }
   try {
-    docker compose --project-name $projectName stop $service | Out-Null
+    $composeArgs = Get-ComposeEnvArg $projectName $null
+    if (-not $composeArgs) { return $false }
+    Invoke-DockerCompose ($composeArgs + @("stop", $service)) | Out-Null
     return $true
-  } catch {
+  }
+  catch {
     return $false
   }
 }
@@ -287,10 +369,11 @@ function Invoke-ComposeServiceStart([string]$projectName, [string]$envFile, [str
   if (-not (Test-DockerComposeAvailability)) { return $false }
   $env:DOCKER_BUILDKIT = if ($useBuildKit) { "1" } else { "0" }
   $composeArgs = Get-ComposeEnvArg $projectName $envFile
+  if (-not $composeArgs) { return $false }
 
   if ($build) {
     $buildArgs = $composeArgs + @("build", $service)
-    & docker @buildArgs
+    Invoke-DockerCompose $buildArgs | Out-Null
     if ($LASTEXITCODE -ne 0) {
       return $false
     }
@@ -298,14 +381,20 @@ function Invoke-ComposeServiceStart([string]$projectName, [string]$envFile, [str
 
   $upArgs = $composeArgs + @("up", "-d", $service)
   if ($noBuild) { $upArgs += "--no-build" }
-  & docker @upArgs
+  Invoke-DockerCompose $upArgs | Out-Null
   return $LASTEXITCODE -eq 0
 }
 
 function Resolve-PostgresContainerName([string]$composeProject) {
   $containerName = ""
   if (Test-DockerComposeAvailability) {
-    try { $containerName = docker compose --project-name $composeProject ps --status running -q postgres } catch { $containerName = "" }
+    try {
+      $composeArgs = Get-ComposeEnvArg $composeProject $null
+      if ($composeArgs) {
+        $containerName = Invoke-DockerCompose ($composeArgs + @("ps", "--status", "running", "-q", "postgres"))
+      }
+    }
+    catch { $containerName = "" }
   }
   if (-not $containerName -and (Test-CommandAvailability "docker")) {
     try { $containerName = docker ps --filter "label=com.docker.compose.service=postgres" --format "{{.Names}}" | Select-Object -First 1 } catch { $containerName = "" }
@@ -319,12 +408,16 @@ function Resolve-DockerContainerByPort([int]$port, [string]$composeProject, [str
 
   if (Test-DockerComposeAvailability) {
     try {
-      $containerId = docker compose --project-name $composeProject ps -q $serviceName
+      $composeArgs = Get-ComposeEnvArg $composeProject $null
+      $containerId = if ($composeArgs) { Invoke-DockerCompose ($composeArgs + @("ps", "-q", $serviceName)) } else { "" }
       if ($containerId) {
-        docker compose --project-name $composeProject stop $serviceName | Out-Null
+        if ($composeArgs) {
+          Invoke-DockerCompose ($composeArgs + @("stop", $serviceName)) | Out-Null
+        }
         $stoppedAny = $true
       }
-    } catch {
+    }
+    catch {
       Write-Verbose "Failed to stop compose service '$serviceName' on project '$composeProject': $($_.Exception.Message)"
     }
   }
@@ -337,7 +430,8 @@ function Resolve-DockerContainerByPort([int]$port, [string]$composeProject, [str
         $stoppedAny = $true
       }
     }
-  } catch {
+  }
+  catch {
     Write-Verbose "Failed to scan/stop docker containers published on port ${port}: $($_.Exception.Message)"
   }
 
@@ -357,13 +451,15 @@ function Initialize-SubqueryDbExtension([pscustomobject]$dbInfo, [string]$compos
   $handled = $false
   if (Test-DockerComposeAvailability) {
     try {
-      $containerId = docker compose --project-name $composeProject ps -q postgres
-      if ($containerId) {
-        docker compose --project-name $composeProject exec -T -e PGPASSWORD=$password postgres `
+      $composeArgs = Get-ComposeEnvArg $composeProject $null
+      $containerId = if ($composeArgs) { Invoke-DockerCompose ($composeArgs + @("ps", "-q", "postgres")) } else { "" }
+      if ($containerId -and $composeArgs) {
+        Invoke-DockerCompose ($composeArgs + @("exec", "-T", "-e", "PGPASSWORD=$password", "postgres")) `
           psql -U $user -d $dbName -c $extensionCmd | Out-Null
         $handled = $true
       }
-    } catch { $handled = $false }
+    }
+    catch { $handled = $false }
   }
 
   if (-not $handled -and (Test-CommandAvailability "docker")) {
@@ -373,7 +469,8 @@ function Initialize-SubqueryDbExtension([pscustomobject]$dbInfo, [string]$compos
         docker exec -e PGPASSWORD=$password $containerName psql -U $user -d $dbName -c $extensionCmd | Out-Null
         $handled = $true
       }
-    } catch { $handled = $false }
+    }
+    catch { $handled = $false }
   }
 
   if (-not $handled) {
@@ -395,15 +492,23 @@ function Wait-ForSubquerySchema([pscustomobject]$dbInfo, [string]$composeProject
   for ($i = 0; $i -lt $timeoutSeconds; $i++) {
     try {
       $result = $null
-      if ($containerName -match '^[a-f0-9]{12,}$') {
-        $result = docker compose --project-name $composeProject exec -T -e PGPASSWORD=$password postgres `
-          psql -U $user -d $dbName -tA -c "SELECT schema_name FROM information_schema.schemata WHERE schema_name = '$schemaName';"
-      } else {
+      if ($containerName -match '^[a-f0-9]{12,}$' -and (Test-DockerComposeAvailability)) {
+        $composeArgs = Get-ComposeEnvArg $composeProject $null
+        if ($composeArgs) {
+          $result = Invoke-DockerCompose ($composeArgs + @("exec", "-T", "-e", "PGPASSWORD=$password", "postgres", "psql", "-U", $user, "-d", $dbName, "-tA", "-c", "SELECT schema_name FROM information_schema.schemata WHERE schema_name = '$schemaName';"))
+        }
+        else {
+          $result = docker exec -e PGPASSWORD=$password $containerName `
+            psql -U $user -d $dbName -tA -c "SELECT schema_name FROM information_schema.schemata WHERE schema_name = '$schemaName';"
+        }
+      }
+      else {
         $result = docker exec -e PGPASSWORD=$password $containerName `
           psql -U $user -d $dbName -tA -c "SELECT schema_name FROM information_schema.schemata WHERE schema_name = '$schemaName';"
       }
       if ($result -match $schemaName) { return $true }
-    } catch {
+    }
+    catch {
       Write-Verbose "Waiting for schema '$schemaName' failed for this poll iteration: $($_.Exception.Message)"
     }
     Start-Sleep -Seconds 1
@@ -420,15 +525,19 @@ function Read-SubqueryMetadataValue([pscustomobject]$dbInfo, [string]$composePro
   $password = if ($dbInfo.Pass) { $dbInfo.Pass } else { "" }
   $user = if ($dbInfo.User) { $dbInfo.User } else { "postgres" }
   $dbName = if ($dbInfo.Database) { $dbInfo.Database } else { "postgres" }
+  $composeArgs = $null
+  if (Test-DockerComposeAvailability) {
+    $composeArgs = Get-ComposeEnvArg $composeProject $null
+  }
 
   $value = $null
   try {
     $schemaQuery = "SELECT schema_name FROM information_schema.schemata WHERE schema_name = '$schemaName';"
     $schemaExists = $false
-    if ($containerName -match '^[a-f0-9]{12,}$') {
-      $schemaResult = docker compose --project-name $composeProject exec -T -e PGPASSWORD=$password postgres `
-        psql -U $user -d $dbName -tA -c $schemaQuery
-    } else {
+    if ($containerName -match '^[a-f0-9]{12,}$' -and $composeArgs) {
+      $schemaResult = Invoke-DockerCompose ($composeArgs + @("exec", "-T", "-e", "PGPASSWORD=$password", "postgres", "psql", "-U", $user, "-d", $dbName, "-tA", "-c", $schemaQuery))
+    }
+    else {
       $schemaResult = docker exec -e PGPASSWORD=$password $containerName `
         psql -U $user -d $dbName -tA -c $schemaQuery
     }
@@ -436,14 +545,15 @@ function Read-SubqueryMetadataValue([pscustomobject]$dbInfo, [string]$composePro
     if (-not $schemaExists) { return $null }
 
     $query = "SELECT value FROM `"$schemaName`"._metadata WHERE key = '${key}' LIMIT 1;"
-    if ($containerName -match '^[a-f0-9]{12,}$') {
-      $value = $query | docker compose --project-name $composeProject exec -T -e PGPASSWORD=$password postgres `
-        psql -U $user -d $dbName -tA
-    } else {
+    if ($containerName -match '^[a-f0-9]{12,}$' -and $composeArgs) {
+      $value = $query | Invoke-DockerCompose ($composeArgs + @("exec", "-T", "-e", "PGPASSWORD=$password", "postgres", "psql", "-U", $user, "-d", $dbName, "-tA"))
+    }
+    else {
       $value = $query | docker exec -i -e PGPASSWORD=$password $containerName `
         psql -U $user -d $dbName -tA
     }
-  } catch {
+  }
+  catch {
     return $null
   }
 
@@ -468,14 +578,38 @@ const { ApiPromise, WsProvider } = require('@polkadot/api');
   await api.disconnect();
 })().catch((e) => { console.error(e && e.message ? e.message : e); process.exit(1); });
 "@
+  $prevErrorActionPreference = $ErrorActionPreference
   try {
+    # On Windows PowerShell, native stderr can become terminating when ErrorActionPreference=Stop.
+    # polkadot.js writes advisory warnings to stderr, so temporarily relax this around the probe.
+    $ErrorActionPreference = "Continue"
     $output = node -e $script 2>$null
-  } catch {
+  }
+  catch {
     return $null
   }
+  finally {
+    $ErrorActionPreference = $prevErrorActionPreference
+  }
   if ($LASTEXITCODE -ne 0) { return $null }
-  $value = $output.Trim()
-  if ($value -match '^\d+$') { return [int]$value }
+
+  # polkadot.js can emit informational lines alongside the height. Parse line-by-line.
+  $lines = @()
+  if ($output -is [System.Array]) {
+    $lines = $output
+  }
+  else {
+    $lines = @($output)
+  }
+
+  foreach ($line in $lines) {
+    if ($null -eq $line) { continue }
+    $value = "$line".Trim()
+    if ($value -match '^\d+$') {
+      return [int]$value
+    }
+  }
+
   return $null
 }
 
@@ -491,6 +625,56 @@ function Wait-ForChainFinalizedHeight([string]$wsUrl, [int]$minHeight = 1, [int]
   }
 
   return $false
+}
+
+function Wait-ForRedisReady([int]$port, [string]$composeProject, [int]$timeoutSeconds = 30) {
+  for ($i = 0; $i -lt $timeoutSeconds; $i++) {
+    try {
+      $containerName = ""
+      if (Test-DockerComposeAvailability) {
+        $composeArgs = Get-ComposeEnvArg $composeProject $null
+        if ($composeArgs) {
+          $containerName = Invoke-DockerCompose ($composeArgs + @("ps", "-q", "redis"))
+        }
+      }
+      if (-not $containerName -and (Test-CommandAvailability "docker")) {
+        $containerName = docker ps --filter "publish=$port" --format "{{.Names}}" | Select-Object -First 1
+      }
+      if ($containerName) {
+        $pong = docker exec $containerName redis-cli ping 2>$null
+        if ($pong -match "PONG") { return $true }
+      }
+    }
+    catch {}
+    Start-Sleep -Seconds 1
+  }
+  return $false
+}
+
+function Wait-ForPostgresReady([pscustomobject]$dbInfo, [string]$composeProject, [int]$timeoutSeconds = 30) {
+  if (-not $dbInfo) { return $false }
+  $user = if ($dbInfo.User) { $dbInfo.User } else { "postgres" }
+  $dbName = if ($dbInfo.Database) { $dbInfo.Database } else { "postgres" }
+  for ($i = 0; $i -lt $timeoutSeconds; $i++) {
+    try {
+      $containerName = Resolve-PostgresContainerName $composeProject
+      if ($containerName) {
+        docker exec $containerName pg_isready -U $user -d $dbName 2>$null | Out-Null
+        if ($LASTEXITCODE -eq 0) { return $true }
+      }
+    }
+    catch {}
+    Start-Sleep -Seconds 1
+  }
+  return $false
+}
+
+function Find-FreePort([int]$startPort, [int]$maxAttempts = 4) {
+  for ($i = 0; $i -lt $maxAttempts; $i++) {
+    $candidate = $startPort + $i
+    if (-not (Test-PortInUse $candidate)) { return $candidate }
+  }
+  return 0
 }
 
 function Export-ChainMetadata([int]$retries = 15, [int]$delaySeconds = 2) {
@@ -514,6 +698,18 @@ function Export-ChainMetadata([int]$retries = 15, [int]$delaySeconds = 2) {
 $root = Resolve-Path (Join-Path $PSScriptRoot "..")
 $projectRoot = $root.Path
 Set-Location $root
+
+# ---- Service status tracking ----
+$script:TotalStopwatch = [System.Diagnostics.Stopwatch]::StartNew()
+$script:ServiceStatus = [ordered]@{}
+
+function Set-ServiceStatus([string]$name, [string]$status, [string]$endpoint, [string]$detail) {
+  $script:ServiceStatus[$name] = [pscustomobject]@{
+    Status   = $status
+    Endpoint = if ($endpoint) { $endpoint } else { "" }
+    Detail   = if ($detail) { $detail } else { "" }
+  }
+}
 
 $composeProject = if ($env:COMPOSE_PROJECT_NAME) { $env:COMPOSE_PROJECT_NAME } else { "remitchain" }
 $envFile = Join-Path $root ".env.local"
@@ -549,6 +745,56 @@ $env:TZ = "UTC"
 $env:npm_config_script_shell = $env:ComSpec
 
 if ($ChainCommand -ne "") { $env:CHAIN_COMMAND = $ChainCommand }
+
+$chainMode = if ($env:CHAIN_MODE) { $env:CHAIN_MODE.ToLowerInvariant() } else { "local" }
+if ($chainMode -notin @("local", "docker", "remote")) {
+  Write-Warn "Unknown CHAIN_MODE '$chainMode'. Falling back to local."
+  $chainMode = "local"
+}
+Set-Item -Path "Env:CHAIN_MODE" -Value $chainMode
+if ($chainMode -eq "remote") {
+  if ([string]::IsNullOrWhiteSpace($env:CHAIN_WS_URL)) {
+    Write-Err "CHAIN_MODE=remote requires CHAIN_WS_URL."
+    exit 1
+  }
+  $SkipRedis = $true
+  $SkipPostgres = $true
+  $SkipSubquery = $true
+  $env:CHAIN_COMMAND = ""
+  Write-Info "Remote mode enabled. Local chain, Redis, Postgres, and SubQuery startup are disabled."
+}
+
+# ---- Prerequisite validation ----
+$script:PrereqFailed = $false
+
+if (!(Test-CommandAvailability "node")) {
+  Write-Err "node is not installed or not in PATH. Install from https://nodejs.org/"
+  $script:PrereqFailed = $true
+}
+if (!(Test-CommandAvailability "npm")) {
+  Write-Err "npm is not installed or not in PATH. Install from https://nodejs.org/"
+  $script:PrereqFailed = $true
+}
+
+$needsDocker = (-not $SkipRedis) -or (-not $SkipPostgres) -or $ChainDocker -or `
+($chainMode -eq "docker") -or `
+($env:CHAIN_DOCKER -and $env:CHAIN_DOCKER.ToLowerInvariant() -in @('1', 'true', 'yes'))
+if ($needsDocker -and !(Test-CommandAvailability "docker")) {
+  Write-Warn "Docker is not installed. Docker-managed services will be skipped."
+  Write-Warn "  Install: https://www.docker.com/products/docker-desktop/"
+}
+
+if ([string]::IsNullOrWhiteSpace($env:DATABASE_URL)) {
+  Write-Warn "DATABASE_URL is not set. Postgres and Prisma steps will be skipped."
+}
+if ([string]::IsNullOrWhiteSpace($env:CHAIN_WS_URL)) {
+  Write-Warn "CHAIN_WS_URL is not set. Chain metadata export will be skipped."
+}
+
+if ($script:PrereqFailed) {
+  Write-Err "Required prerequisites are missing. Exiting."
+  exit 1
+}
 
 # ---- Pre-clean ----
 if ($Clean) {
@@ -635,40 +881,83 @@ try {
 
     if (Test-LocalHost $redisHost) {
       if (Test-PortInUse $redisPort) {
-        Write-Info "Redis port $redisPort already in use. Skipping Docker Redis."
-      } elseif (Test-DockerComposeAvailability) {
-        Invoke-ComposeServiceStart $composeProject $envFile "redis" $false $false $true | Out-Null
-        Write-Info "Started Redis via docker compose."
-      } else {
-        Write-Warn "Docker compose not available. Skipping Redis startup."
+        Write-Info "Redis port $redisPort already in use. Reusing existing instance."
+        Set-ServiceStatus "Redis" "Ready" "localhost:$redisPort" "pre-existing"
       }
-    } else {
+      elseif (Test-DockerComposeAvailability) {
+        Invoke-ComposeServiceStart $composeProject $envFile "redis" $false $false $true | Out-Null
+        Write-Info "Started Redis via docker compose. Waiting for readiness..."
+        if (Wait-ForRedisReady $redisPort $composeProject 30) {
+          Write-Info "Redis is accepting connections."
+          Set-ServiceStatus "Redis" "Ready" "localhost:$redisPort" "docker compose"
+        }
+        else {
+          Write-Warn "Redis started but not responding to PING within 30s."
+          Set-ServiceStatus "Redis" "Unhealthy" "localhost:$redisPort" "not responding"
+        }
+      }
+      else {
+        Write-Warn "Docker compose not available. Install: https://docker.com/products/docker-desktop/"
+        Set-ServiceStatus "Redis" "Skipped" "" "no Docker"
+      }
+    }
+    else {
       Write-Info "REDIS_URL host not local. Skipping Docker Redis."
+      Set-ServiceStatus "Redis" "External" "$redisHost`:$redisPort" ""
     }
   }
-} catch { Write-Warn "Redis startup failed: $($_.Exception.Message)" }
+  else {
+    Set-ServiceStatus "Redis" "Skipped" "" ""
+  }
+}
+catch {
+  Write-Warn "Redis startup failed: $($_.Exception.Message)"
+  Set-ServiceStatus "Redis" "Failed" "" $_.Exception.Message
+}
 
 try {
   if (!$SkipPostgres -and $env:DATABASE_URL) {
     $dbInfo = $script:ParsedDb
     if ($dbInfo -and (Test-LocalHost $dbInfo.Host)) {
       if (Test-PortInUse $dbInfo.Port) {
-        Write-Info "Postgres port $($dbInfo.Port) already in use. Skipping Docker Postgres."
-      } elseif (Test-DockerComposeAvailability) {
+        Write-Info "Postgres port $($dbInfo.Port) already in use. Reusing existing instance."
+        Set-ServiceStatus "Postgres" "Ready" "localhost:$($dbInfo.Port)" "pre-existing"
+      }
+      elseif (Test-DockerComposeAvailability) {
         $env:POSTGRES_USER = $dbInfo.User
         $env:POSTGRES_PASSWORD = $dbInfo.Pass
         $env:POSTGRES_DB = $dbInfo.Database
         $env:POSTGRES_PORT = $dbInfo.Port
         Invoke-ComposeServiceStart $composeProject $envFile "postgres" $false $false $true | Out-Null
-        Write-Info "Started Postgres via docker compose."
-      } else {
-        Write-Warn "Docker compose not available. Skipping Postgres startup."
+        Write-Info "Started Postgres via docker compose. Waiting for readiness..."
+        if (Wait-ForPostgresReady $dbInfo $composeProject 30) {
+          Write-Info "Postgres is accepting connections."
+          Set-ServiceStatus "Postgres" "Ready" "localhost:$($dbInfo.Port)" "docker compose"
+        }
+        else {
+          Write-Warn "Postgres started but not accepting connections within 30s."
+          Write-Warn "  Check: docker logs <container> | tail -20"
+          Set-ServiceStatus "Postgres" "Unhealthy" "localhost:$($dbInfo.Port)" "not responding"
+        }
       }
-    } else {
+      else {
+        Write-Warn "Docker compose not available. Install: https://docker.com/products/docker-desktop/"
+        Set-ServiceStatus "Postgres" "Skipped" "" "no Docker"
+      }
+    }
+    elseif ($dbInfo) {
       Write-Info "DATABASE_URL host not local. Skipping Docker Postgres."
+      Set-ServiceStatus "Postgres" "External" "$($dbInfo.Host):$($dbInfo.Port)" ""
     }
   }
-} catch { Write-Warn "Postgres startup failed: $($_.Exception.Message)" }
+  else {
+    Set-ServiceStatus "Postgres" "Skipped" "" ""
+  }
+}
+catch {
+  Write-Warn "Postgres startup failed: $($_.Exception.Message)"
+  Set-ServiceStatus "Postgres" "Failed" "" $_.Exception.Message
+}
 
 # ---- Chain ----
 $chainWsUrl = $env:CHAIN_WS_URL
@@ -679,12 +968,18 @@ $chainPortInUse = $chainWsIsLocal -and (Test-PortInUse $chainWsPort)
 $script:ChainStarted = $false
 
 $useDockerChain = $ChainDocker
+if ($chainMode -eq "docker") {
+  $useDockerChain = $true
+}
 if (-not $useDockerChain -and $env:CHAIN_DOCKER) {
   $value = $env:CHAIN_DOCKER.ToLowerInvariant()
   $useDockerChain = $value -in @('1', 'true', 'yes')
 }
 
-if ($useDockerChain) {
+if ($chainMode -eq "remote") {
+  Write-Info "Remote chain mode active. Skipping local chain startup."
+}
+elseif ($useDockerChain) {
   $chainComposeRunning = Test-ComposeServiceRunning $composeProject "chain"
   if ($chainPortInUse -and $chainComposeRunning) {
     Write-Info "Chain compose service already running on port $chainWsPort. Reusing existing container."
@@ -714,7 +1009,8 @@ if ($useDockerChain) {
   if (-not $chainPortInUse) {
     if ($chainComposeRunning -or (Test-ComposeServiceRunning $composeProject "chain")) {
       Write-Info "Chain container already running. Skipping Docker chain start."
-    } else {
+    }
+    else {
       Write-Info "Starting chain in Docker..."
 
       $useRebuild = $ChainDockerRebuild
@@ -740,10 +1036,12 @@ if ($useDockerChain) {
         $chainStarted = Invoke-ComposeServiceStart $composeProject $envFile "chain" $useRebuild $useNoBuild (-not $useNoBuildKit)
         if ($chainStarted) {
           $script:ChainStarted = $true
-        } else {
+        }
+        else {
           Write-Warn "Native docker compose failed to start chain service."
         }
-      } else {
+      }
+      else {
         Write-Info "Docker compose not available. Falling back to helper startup script."
         $dockerArgs = @()
         if ($useRebuild) { $dockerArgs += "-Rebuild" }
@@ -753,22 +1051,40 @@ if ($useDockerChain) {
         & (Join-Path $root "scripts/start-chain-docker.ps1") @dockerArgs
         if ($LASTEXITCODE -eq 0) {
           $script:ChainStarted = $true
-        } else {
+        }
+        else {
           Write-Warn "Helper chain startup failed with exit code $LASTEXITCODE."
         }
       }
     }
   }
-} elseif ($env:CHAIN_COMMAND) {
+}
+elseif ($chainMode -eq "local" -and $env:CHAIN_COMMAND) {
   if ($chainPortInUse) {
     Write-Info "Chain WS port $chainWsPort already in use. Skipping CHAIN_COMMAND."
-  } else {
+  }
+  else {
     Write-Info "Starting chain: $($env:CHAIN_COMMAND)"
     Start-Process powershell -ArgumentList "-NoExit", "-Command", $env:CHAIN_COMMAND -WorkingDirectory $root
     $script:ChainStarted = $true
   }
-} else {
+}
+else {
   Write-Warn "CHAIN_COMMAND not set. Start your chain manually."
+}
+
+# Track chain status after all chain startup paths
+if (-not $chainWsIsLocal) {
+  Set-ServiceStatus "Chain" "External" $chainWsUrl ""
+}
+elseif (Test-PortInUse $chainWsPort) {
+  Set-ServiceStatus "Chain" "Ready" $chainWsUrl ""
+}
+elseif ($script:ChainStarted) {
+  Set-ServiceStatus "Chain" "Ready" $chainWsUrl "starting"
+}
+else {
+  Set-ServiceStatus "Chain" "Skipped" "" "not started"
 }
 
 # ---- Chain metadata ----
@@ -777,13 +1093,15 @@ if ($env:CHAIN_WS_URL) {
     Write-Info "Waiting for chain RPC to warm up..."
     if (-not (Wait-For-PortOpen $chainWsPort 20)) {
       Write-Warn "Chain WS port $chainWsPort not reachable yet. Skipping metadata export."
-    } else {
+    }
+    else {
       Start-Sleep -Seconds 4
     }
   }
   if (-not $chainWsIsLocal -or (Test-PortInUse $chainWsPort)) {
     Export-ChainMetadata | Out-Null
-  } else {
+  }
+  else {
     Write-Info "Chain WS not reachable yet. Skipping metadata export."
   }
 }
@@ -801,18 +1119,37 @@ try {
 
   $relayerPort = 8787
   if ($env:RELAYER_PORT) { [int]::TryParse($env:RELAYER_PORT, [ref]$relayerPort) | Out-Null }
+  $originalRelayerPort = $relayerPort
   if (Test-PortInUse $relayerPort) {
     $stopped = Resolve-ProcessByPortIfOwned $relayerPort "Relayer" $projectRoot
     if (-not $stopped) {
-      Write-Warn "Relayer port $relayerPort already in use. Skipping relayer start."
-      $relayerPort = 0
+      $fallback = Find-FreePort ($relayerPort + 1) 3
+      if ($fallback -gt 0) {
+        Write-Warn "Relayer port $relayerPort in use. Starting on fallback port $fallback."
+        Write-Info "  To inspect: netstat -ano | findstr :$relayerPort"
+        $relayerPort = $fallback
+      }
+      else {
+        Write-Warn "Relayer port $relayerPort and fallback ports all in use. Skipping relayer."
+        Write-Info "  Free the port: netstat -ano | findstr :$relayerPort  then  taskkill /PID <pid> /F"
+        $relayerPort = 0
+      }
     }
   }
 
   if ($relayerPort -ne 0) {
-    Start-Process powershell -ArgumentList "-NoExit", "-Command", "npm run dev" -WorkingDirectory $relayerDir
+    $relayerEnvCmd = if ($relayerPort -ne $originalRelayerPort) { "`$env:PORT=$relayerPort; " } else { "" }
+    Start-Process powershell -ArgumentList "-NoExit", "-Command", "${relayerEnvCmd}npm run dev" -WorkingDirectory $relayerDir
+    Set-ServiceStatus "Relayer" "Ready" "http://localhost:$relayerPort" ""
   }
-} catch { Write-Warn "Relayer start failed: $($_.Exception.Message)" }
+  else {
+    Set-ServiceStatus "Relayer" "Skipped" "" "port $originalRelayerPort in use"
+  }
+}
+catch {
+  Write-Warn "Relayer start failed: $($_.Exception.Message)"
+  Set-ServiceStatus "Relayer" "Failed" "" $_.Exception.Message
+}
 
 # ---- Prisma ----
 try {
@@ -824,7 +1161,8 @@ try {
     if (Test-Path $migrationsDir) {
       Write-Info "Applying Prisma migrations..."
       npm run prisma:deploy
-    } else {
+    }
+    else {
       Write-Info "Initializing Prisma migrations..."
       npm run prisma:migrate -- --name init
     }
@@ -832,10 +1170,18 @@ try {
     if ($script:ParsedDb) {
       Initialize-SubqueryDbExtension $script:ParsedDb $composeProject
     }
-  } else {
-    Write-Warn "DATABASE_URL not set. Skipping Prisma."
+    Set-ServiceStatus "Prisma" "Ready" "" "migrations applied"
   }
-} catch { Write-Warn "Prisma step failed: $($_.Exception.Message)" }
+  else {
+    Write-Warn "DATABASE_URL not set. Skipping Prisma."
+    Set-ServiceStatus "Prisma" "Skipped" "" "no DATABASE_URL"
+  }
+}
+catch {
+  Write-Warn "Prisma step failed: $($_.Exception.Message)"
+  Write-Warn "  Retry manually: npx prisma migrate deploy"
+  Set-ServiceStatus "Prisma" "Failed" "" $_.Exception.Message
+}
 
 # ---- Web ----
 try {
@@ -848,22 +1194,42 @@ try {
   $webPort = 3000
   if ($env:NEXT_PORT) {
     [int]::TryParse($env:NEXT_PORT, [ref]$webPort) | Out-Null
-  } elseif ($env:PORT) {
+  }
+  elseif ($env:PORT) {
     [int]::TryParse($env:PORT, [ref]$webPort) | Out-Null
   }
 
+  $originalWebPort = $webPort
   if (Test-PortInUse $webPort) {
     $stopped = Resolve-ProcessByPortIfOwned $webPort "Web" $projectRoot
     if (-not $stopped) {
-      Write-Warn "Web port $webPort already in use. Skipping web start."
-      $webPort = 0
+      $fallback = Find-FreePort ($webPort + 1) 3
+      if ($fallback -gt 0) {
+        Write-Warn "Web port $webPort in use. Starting on fallback port $fallback."
+        Write-Info "  To inspect: netstat -ano | findstr :$webPort"
+        $webPort = $fallback
+      }
+      else {
+        Write-Warn "Web port $webPort and fallback ports all in use. Skipping web."
+        Write-Info "  Free the port: netstat -ano | findstr :$webPort  then  taskkill /PID <pid> /F"
+        $webPort = 0
+      }
     }
   }
 
   if ($webPort -ne 0) {
-    Start-Process powershell -ArgumentList "-NoExit", "-Command", "npm run dev" -WorkingDirectory $root
+    $portArg = if ($webPort -ne $originalWebPort) { "`$env:PORT=$webPort; " } else { "" }
+    Start-Process powershell -ArgumentList "-NoExit", "-Command", "${portArg}npm run dev" -WorkingDirectory $root
+    Set-ServiceStatus "Web" "Ready" "http://localhost:$webPort" ""
   }
-} catch { Write-Warn "Web start failed: $($_.Exception.Message)" }
+  else {
+    Set-ServiceStatus "Web" "Skipped" "" "port $originalWebPort in use"
+  }
+}
+catch {
+  Write-Warn "Web start failed: $($_.Exception.Message)"
+  Set-ServiceStatus "Web" "Failed" "" $_.Exception.Message
+}
 
 # ---- SubQuery ----
 if (-not $SkipSubquery) {
@@ -874,7 +1240,10 @@ if (-not $SkipSubquery) {
 
     if ($subqlNodeRunning -and $subqlQueryRunning) {
       Write-Info "SubQuery already running. Skipping SubQuery start."
-    } else {
+      Set-ServiceStatus "SubQuery Node" "Ready" "localhost:3000" "pre-existing"
+      Set-ServiceStatus "SubQuery Query" "Ready" "localhost:3001" "pre-existing"
+    }
+    else {
       if (!(Test-Path (Join-Path $subqueryDir "node_modules"))) {
         Write-Info "Installing SubQuery dependencies..."
         Push-Location $subqueryDir
@@ -888,7 +1257,8 @@ if (-not $SkipSubquery) {
 
       if (!(Test-Path $subqlBin) -or !(Test-Path $subqlNodeBin) -or !(Test-Path $subqlQueryBin)) {
         Write-Warn "SubQuery CLI not found after install. Install @subql/cli, @subql/node, and @subql/query."
-      } else {
+      }
+      else {
         Push-Location $subqueryDir
         & $subqlBin codegen project.yaml 2>&1 | ForEach-Object { Write-Info "$_" }
         if ($LASTEXITCODE -ne 0) {
@@ -915,15 +1285,42 @@ if (-not $SkipSubquery) {
 
         if (-not $subqlNodeRunning) {
           $projectFile = Join-Path $subqueryDir "project.yaml"
-          $chainReadyForSubquery = Wait-ForChainFinalizedHeight $env:CHAIN_WS_URL 1 60
+          $subqueryChainEndpoint = if (-not [string]::IsNullOrWhiteSpace($env:SUBQUERY_ENDPOINT)) {
+            $env:SUBQUERY_ENDPOINT
+          }
+          else {
+            $env:CHAIN_WS_URL
+          }
+
+          if ([string]::IsNullOrWhiteSpace($subqueryChainEndpoint)) {
+            Write-Warn "No chain endpoint configured (CHAIN_WS_URL/SUBQUERY_ENDPOINT). Skipping SubQuery node start."
+            Set-ServiceStatus "SubQuery Node" "Deferred" "" "missing chain endpoint"
+            Set-ServiceStatus "SubQuery Query" "Deferred" "" "node not started"
+            continue
+          }
+
+          $observedFinalizedHeight = Get-ChainFinalizedHeight $subqueryChainEndpoint
+          $chainReadyForSubquery = $null -ne $observedFinalizedHeight -and $observedFinalizedHeight -ge 1
+          if (-not $chainReadyForSubquery) {
+            $chainReadyForSubquery = Wait-ForChainFinalizedHeight $subqueryChainEndpoint 1 60
+          }
+
           if (-not $chainReadyForSubquery) {
             Write-Warn "Chain finalized height did not reach 1 in time. Skipping SubQuery node start to avoid genesis timestamp assertion."
             Write-Info "Once chain is producing blocks, re-run: npm run start:node --prefix subquery"
             $subqlNodeRunning = $false
-          } else {
+            Set-ServiceStatus "SubQuery Node" "Deferred" "" "chain not finalizing"
+            Set-ServiceStatus "SubQuery Query" "Deferred" "" "node not started"
+          }
+          else {
             if ($script:ParsedDb) {
               $lastProcessed = Read-SubqueryMetadataValue $script:ParsedDb $composeProject $subqueryName "lastProcessedHeight"
-              $chainHead = Get-ChainFinalizedHeight $env:CHAIN_WS_URL
+              $chainHead = if ($chainReadyForSubquery) {
+                if ($null -ne $observedFinalizedHeight) { $observedFinalizedHeight } else { Get-ChainFinalizedHeight $subqueryChainEndpoint }
+              }
+              else {
+                $null
+              }
               if ($lastProcessed -and $null -ne $chainHead) {
                 $lastValue = 0
                 [int]::TryParse($lastProcessed, [ref]$lastValue) | Out-Null
@@ -953,7 +1350,8 @@ if (-not $SkipSubquery) {
               }
             }
           }
-        } else {
+        }
+        else {
           Write-Info "SubQuery node already running."
         }
 
@@ -970,15 +1368,78 @@ if (-not $SkipSubquery) {
             if (-not $script:ParsedDb -or $schemaReady) {
               Start-Process powershell -ArgumentList "-NoExit", "-Command", "`"$subqlQueryBin`" --name `"$subqueryName`" --port $queryPort" -WorkingDirectory $subqueryDir
             }
-          } else {
+          }
+          else {
             Write-Warn "SubQuery query port $queryPort already in use. Skipping SubQuery query."
           }
-        } elseif ($subqlQueryRunning) {
+        }
+        elseif ($subqlQueryRunning) {
           Write-Info "SubQuery query already running."
+        }
+
+        $subqlNodeRunning = Test-CommandLineRunning "subql-node" $subqueryDir
+        if ($subqlNodeRunning) {
+          Set-ServiceStatus "SubQuery Node" "Ready" "localhost:$nodePort" ""
+        }
+        elseif (-not $script:ServiceStatus.Contains("SubQuery Node")) {
+          Set-ServiceStatus "SubQuery Node" "Skipped" "" "not started"
+        }
+
+        $subqlQueryRunning = Test-CommandLineRunning "subql-query" $subqueryDir
+        if ($subqlQueryRunning) {
+          Set-ServiceStatus "SubQuery Query" "Ready" "http://localhost:$queryPort" ""
+        }
+        elseif (-not $script:ServiceStatus.Contains("SubQuery Query")) {
+          Set-ServiceStatus "SubQuery Query" "Skipped" "" "not started"
         }
       }
     }
-  } catch { Write-Warn "SubQuery start failed: $($_.Exception.Message)" }
+  }
+  catch {
+    Write-Warn "SubQuery start failed: $($_.Exception.Message)"
+    Set-ServiceStatus "SubQuery Node" "Failed" "" $_.Exception.Message
+  }
 }
 
-Write-Info "All services started."
+# ---- Summary ----
+$script:TotalStopwatch.Stop()
+$elapsed = $script:TotalStopwatch.Elapsed
+
+$headerColor = "Cyan"
+Write-Host ""
+Write-Host "  +-----------------------------------------------------------------+" -ForegroundColor $headerColor
+Write-Host "  |             RemitChain Dev Environment                          |" -ForegroundColor $headerColor
+Write-Host "  +------------------+------------+-------------------------------+" -ForegroundColor $headerColor
+Write-Host ("  | {0,-16} | {1,-10} | {2,-29} |" -f "Service", "Status", "Endpoint") -ForegroundColor $headerColor
+Write-Host "  +------------------+------------+-------------------------------+" -ForegroundColor $headerColor
+
+foreach ($svcName in $script:ServiceStatus.Keys) {
+  $svc = $script:ServiceStatus[$svcName]
+  $statusIcon = switch ($svc.Status) {
+    "Ready" { "* Ready" }
+    "Unhealthy" { "! Unhealthy" }
+    "Skipped" { "- Skipped" }
+    "Failed" { "x Failed" }
+    "Deferred" { "~ Deferred" }
+    "External" { "^ External" }
+    default { "  $($svc.Status)" }
+  }
+  $color = switch ($svc.Status) {
+    "Ready" { "Green" }
+    "Unhealthy" { "Yellow" }
+    "Skipped" { "DarkGray" }
+    "Failed" { "Red" }
+    "Deferred" { "Yellow" }
+    "External" { "DarkCyan" }
+    default { "White" }
+  }
+  $endpoint = if ($svc.Endpoint) { $svc.Endpoint } elseif ($svc.Detail) { $svc.Detail } else { "-" }
+  if ($endpoint.Length -gt 29) { $endpoint = $endpoint.Substring(0, 26) + "..." }
+  $line = "  | {0,-16} | {1,-10} | {2,-29} |" -f $svcName, $statusIcon, $endpoint
+  Write-Host $line -ForegroundColor $color
+}
+
+Write-Host "  +------------------+------------+-------------------------------+" -ForegroundColor $headerColor
+Write-Host ""
+Write-Host ("  Startup completed in {0:F1}s" -f $elapsed.TotalSeconds) -ForegroundColor DarkGray
+Write-Host ""

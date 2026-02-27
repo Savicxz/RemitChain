@@ -3,10 +3,10 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "codegen": "subql codegen -f project.yaml",
-    "build": "subql build -f project.yaml",
-    "start:node": "subql-node -f project.yaml --db-schema remitchain-indexer",
-    "start:query": "subql-query --name remitchain-indexer --port 3001"
+    "codegen": "subql codegen -f project.ts",
+    "build": "subql build -f project.ts",
+    "start:node": "node scripts/start-node.cjs",
+    "start:query": "node scripts/start-query.cjs"
   },
   "dependencies": {
     "@subql/types": "2.2.0"
