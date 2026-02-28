@@ -132,5 +132,9 @@ set -a
 source "$RUNTIME_FILE"
 set +a
 
+# Ensure Prisma client exists even when DATABASE_URL is not configured.
+echo "Generating Prisma client..."
+npm run prisma:generate >/dev/null
+
 echo "Starting web in remote mode (CHAIN_MODE=$CHAIN_MODE, DEV_IDENTITY=${DEV_IDENTITY:-unset})"
 exec npm run dev

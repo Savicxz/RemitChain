@@ -1187,10 +1187,13 @@ else {
 
 # ---- Prisma ----
 try {
-  if ($env:DATABASE_URL) {
-    Write-Info "Preparing Prisma client..."
-    npm run prisma:generate
+  Write-Info "Preparing Prisma client..."
+  npm run prisma:generate
+  if ($LASTEXITCODE -ne 0) {
+    throw "Prisma client generation failed with exit code $LASTEXITCODE."
+  }
 
+  if ($env:DATABASE_URL) {
     $migrationsDir = Join-Path $root "prisma/migrations"
     if (Test-Path $migrationsDir) {
       Write-Info "Applying Prisma migrations..."
@@ -1207,8 +1210,8 @@ try {
     Set-ServiceStatus "Prisma" "Ready" "" "migrations applied"
   }
   else {
-    Write-Warn "DATABASE_URL not set. Skipping Prisma."
-    Set-ServiceStatus "Prisma" "Skipped" "" "no DATABASE_URL"
+    Write-Warn "DATABASE_URL not set. Skipping Prisma migrations."
+    Set-ServiceStatus "Prisma" "Skipped" "" "client generated; no DATABASE_URL"
   }
 }
 catch {

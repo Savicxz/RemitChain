@@ -42,6 +42,8 @@ Edit `.env.local` and set:
 - `REMOTE_STATUS_URL=http://100.97.178.5:8787/dev/status`
 - `RELAYER_URL=http://100.97.178.5:8787`
 - `SUBQUERY_GRAPHQL_URL=http://100.97.178.5:3001`
+- `DATABASE_URL=postgresql://postgres:postgres@100.97.178.5:5432/remitchain?schema=public`
+- `SESSION_SECRET=<any-long-random-string>`
 
 ### 4) Verify hub connectivity
 ```powershell
@@ -94,6 +96,8 @@ Edit `.env.local` and set:
 - `REMOTE_STATUS_URL=http://100.97.178.5:8787/dev/status`
 - `RELAYER_URL=http://100.97.178.5:8787`
 - `SUBQUERY_GRAPHQL_URL=http://100.97.178.5:3001`
+- `DATABASE_URL=postgresql://postgres:postgres@100.97.178.5:5432/remitchain?schema=public`
+- `SESSION_SECRET=<any-long-random-string>`
 
 ### 4) Verify hub connectivity
 ```bash
@@ -128,6 +132,8 @@ Edit `.env.local`:
 - `REMOTE_STATUS_URL=http://100.97.178.5:8787/dev/status`
 - `RELAYER_URL=http://100.97.178.5:8787`
 - `SUBQUERY_GRAPHQL_URL=http://100.97.178.5:3001`
+- `DATABASE_URL=postgresql://postgres:postgres@100.97.178.5:5432/remitchain?schema=public`
+- `SESSION_SECRET=<any-long-random-string>`
 
 ### 3) Linux note for `.npmrc`
 If `.npmrc` contains `script-shell=cmd.exe`, remove that line in Codespaces:
