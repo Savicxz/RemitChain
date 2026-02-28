@@ -17,6 +17,31 @@ type SubqueryRemittance = {
   txHash?: string;
 };
 
+function isMissingRemittancesFieldError(value: string) {
+  const normalized = value.replace(/\\"/g, '"');
+  return (
+    normalized.includes('Cannot query field "remittances"') ||
+    (normalized.includes('Cannot query field') &&
+      normalized.toLowerCase().includes('remittances'))
+  );
+}
+
+function extractGraphqlMessages(payload: string) {
+  try {
+    const parsed = JSON.parse(payload) as {
+      errors?: Array<{ message?: string }>;
+    };
+    if (!Array.isArray(parsed.errors)) {
+      return [];
+    }
+    return parsed.errors
+      .map((entry) => entry?.message)
+      .filter((message): message is string => Boolean(message));
+  } catch {
+    return [];
+  }
+}
+
 function toNumber(amount: string, decimals: number) {
   try {
     const raw = BigInt(amount);
@@ -87,13 +112,17 @@ export async function GET() {
 
     if (!response.ok) {
       const details = await response.text();
-      if (details.includes('Cannot query field "remittances"')) {
+      const messages = extractGraphqlMessages(details);
+      if (
+        isMissingRemittancesFieldError(details) ||
+        messages.some((message) => isMissingRemittancesFieldError(message))
+      ) {
         remittances = [];
       } else {
-      return NextResponse.json(
+        return NextResponse.json(
           { error: 'Failed to reach SubQuery', details },
-        { status: 502 }
-      );
+          { status: 502 }
+        );
       }
     } else {
       const data = (await response.json()) as {
@@ -102,7 +131,10 @@ export async function GET() {
       };
       if (data.errors?.length) {
         const firstError = data.errors[0].message ?? 'Unknown GraphQL error';
-        if (firstError.includes('Cannot query field "remittances"')) {
+        if (
+          isMissingRemittancesFieldError(firstError) ||
+          data.errors.some((entry) => isMissingRemittancesFieldError(entry.message ?? ''))
+        ) {
           remittances = [];
         } else {
           return NextResponse.json({ error: firstError }, { status: 502 });
