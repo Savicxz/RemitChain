@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "dev:remote": "bash scripts/start-dev.sh",
+    "dev:remote": "node scripts/run-dev-remote.cjs",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
