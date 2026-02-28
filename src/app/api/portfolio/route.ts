@@ -86,20 +86,31 @@ export async function GET() {
     });
 
     if (!response.ok) {
+      const details = await response.text();
+      if (details.includes('Cannot query field "remittances"')) {
+        remittances = [];
+      } else {
       return NextResponse.json(
-        { error: 'Failed to reach SubQuery', details: await response.text() },
+          { error: 'Failed to reach SubQuery', details },
         { status: 502 }
       );
+      }
+    } else {
+      const data = (await response.json()) as {
+        data?: { remittances?: { nodes?: SubqueryRemittance[] } };
+        errors?: Array<{ message: string }>;
+      };
+      if (data.errors?.length) {
+        const firstError = data.errors[0].message ?? 'Unknown GraphQL error';
+        if (firstError.includes('Cannot query field "remittances"')) {
+          remittances = [];
+        } else {
+          return NextResponse.json({ error: firstError }, { status: 502 });
+        }
+      } else {
+        remittances = data.data?.remittances?.nodes ?? [];
+      }
     }
-
-    const data = (await response.json()) as {
-      data?: { remittances?: { nodes?: SubqueryRemittance[] } };
-      errors?: Array<{ message: string }>;
-    };
-    if (data.errors?.length) {
-      return NextResponse.json({ error: data.errors[0].message }, { status: 502 });
-    }
-    remittances = data.data?.remittances?.nodes ?? [];
   } catch {
     return NextResponse.json({ error: 'Failed to query SubQuery' }, { status: 502 });
   }
