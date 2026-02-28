@@ -741,9 +741,10 @@ Initialize-EnvFile ".env.local" ".env.example"
 Initialize-EnvFile "services/relayer/.env" "services/relayer/.env.example"
 Initialize-EnvFile "subquery/.env" "subquery/.env.example"
 
-Use-EnvMap (Read-EnvFile ".env.local")
 Use-EnvMap (Read-EnvFile "services/relayer/.env")
 Use-EnvMap (Read-EnvFile "subquery/.env")
+# Project-level env should have the highest precedence.
+Use-EnvMap (Read-EnvFile ".env.local")
 
 if ($env:CHAIN_WS_URL -and -not $env:SUBQUERY_ENDPOINT) {
   Set-Item -Path "Env:SUBQUERY_ENDPOINT" -Value $env:CHAIN_WS_URL
