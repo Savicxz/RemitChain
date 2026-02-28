@@ -270,6 +270,29 @@ function Resolve-ProcessByPortIfPatternMatch([int]$port, [string[]]$patterns, [s
   return $false
 }
 
+function Resolve-ProcessByPortForce([int]$port, [string]$label) {
+  $conn = Get-NetTCPConnection -LocalPort $port -ErrorAction SilentlyContinue | Select-Object -First 1
+  if (-not $conn) { return $true }
+
+  $procId = $conn.OwningProcess
+  if (-not $procId) { return $false }
+  if ($procId -eq $PID) {
+    Write-Warn "$label port $port is owned by current script process (PID $procId)."
+    return $false
+  }
+
+  Write-Warn "$label port $port is in use by PID $procId. Attempting to stop it..."
+  try {
+    Stop-Process -Id $procId -Force -ErrorAction Stop
+    Start-Sleep -Seconds 1
+    return -not (Test-PortInUse $port)
+  }
+  catch {
+    Write-Warn "Failed to stop PID $procId on port ${port}: $($_.Exception.Message)"
+    return $false
+  }
+}
+
 function Test-CommandLineRunning([string]$token, [string]$pathToken) {
   try {
     $match = Get-CimInstance Win32_Process | Where-Object {
@@ -1107,48 +1130,59 @@ if ($env:CHAIN_WS_URL) {
 }
 
 # ---- Relayer ----
-try {
-  $relayerDir = Join-Path $root "services/relayer"
-  $relayerBin = Join-Path $relayerDir "node_modules/.bin/tsx"
-  if (!(Test-Path $relayerBin)) {
-    Write-Info "Installing relayer dependencies..."
-    Push-Location $relayerDir
-    npm install
-    Pop-Location
-  }
-
-  $relayerPort = 8787
-  if ($env:RELAYER_PORT) { [int]::TryParse($env:RELAYER_PORT, [ref]$relayerPort) | Out-Null }
-  $originalRelayerPort = $relayerPort
-  if (Test-PortInUse $relayerPort) {
-    $stopped = Resolve-ProcessByPortIfOwned $relayerPort "Relayer" $projectRoot
-    if (-not $stopped) {
-      $fallback = Find-FreePort ($relayerPort + 1) 3
-      if ($fallback -gt 0) {
-        Write-Warn "Relayer port $relayerPort in use. Starting on fallback port $fallback."
-        Write-Info "  To inspect: netstat -ano | findstr :$relayerPort"
-        $relayerPort = $fallback
-      }
-      else {
-        Write-Warn "Relayer port $relayerPort and fallback ports all in use. Skipping relayer."
-        Write-Info "  Free the port: netstat -ano | findstr :$relayerPort  then  taskkill /PID <pid> /F"
-        $relayerPort = 0
-      }
-    }
-  }
-
-  if ($relayerPort -ne 0) {
-    $relayerEnvCmd = if ($relayerPort -ne $originalRelayerPort) { "`$env:PORT=$relayerPort; " } else { "" }
-    Start-Process powershell -ArgumentList "-NoExit", "-Command", "${relayerEnvCmd}npm run dev" -WorkingDirectory $relayerDir
-    Set-ServiceStatus "Relayer" "Ready" "http://localhost:$relayerPort" ""
+if ($chainMode -eq "remote") {
+  Write-Info "Remote mode active. Skipping local relayer startup."
+  if (-not [string]::IsNullOrWhiteSpace($env:RELAYER_URL)) {
+    Set-ServiceStatus "Relayer" "External" $env:RELAYER_URL ""
   }
   else {
-    Set-ServiceStatus "Relayer" "Skipped" "" "port $originalRelayerPort in use"
+    Set-ServiceStatus "Relayer" "Skipped" "" "remote mode expects RELAYER_URL"
   }
 }
-catch {
-  Write-Warn "Relayer start failed: $($_.Exception.Message)"
-  Set-ServiceStatus "Relayer" "Failed" "" $_.Exception.Message
+else {
+  try {
+    $relayerDir = Join-Path $root "services/relayer"
+    $relayerBin = Join-Path $relayerDir "node_modules/.bin/tsx"
+    if (!(Test-Path $relayerBin)) {
+      Write-Info "Installing relayer dependencies..."
+      Push-Location $relayerDir
+      npm install
+      Pop-Location
+    }
+
+    $relayerPort = 8787
+    if ($env:RELAYER_PORT) { [int]::TryParse($env:RELAYER_PORT, [ref]$relayerPort) | Out-Null }
+    $originalRelayerPort = $relayerPort
+    if (Test-PortInUse $relayerPort) {
+      $stopped = Resolve-ProcessByPortIfOwned $relayerPort "Relayer" $projectRoot
+      if (-not $stopped) {
+        $fallback = Find-FreePort ($relayerPort + 1) 3
+        if ($fallback -gt 0) {
+          Write-Warn "Relayer port $relayerPort in use. Starting on fallback port $fallback."
+          Write-Info "  To inspect: netstat -ano | findstr :$relayerPort"
+          $relayerPort = $fallback
+        }
+        else {
+          Write-Warn "Relayer port $relayerPort and fallback ports all in use. Skipping relayer."
+          Write-Info "  Free the port: netstat -ano | findstr :$relayerPort  then  taskkill /PID <pid> /F"
+          $relayerPort = 0
+        }
+      }
+    }
+
+    if ($relayerPort -ne 0) {
+      $relayerEnvCmd = if ($relayerPort -ne $originalRelayerPort) { "`$env:PORT=$relayerPort; " } else { "" }
+      Start-Process powershell -ArgumentList "-NoExit", "-Command", "${relayerEnvCmd}npm run dev" -WorkingDirectory $relayerDir
+      Set-ServiceStatus "Relayer" "Ready" "http://localhost:$relayerPort" ""
+    }
+    else {
+      Set-ServiceStatus "Relayer" "Skipped" "" "port $originalRelayerPort in use"
+    }
+  }
+  catch {
+    Write-Warn "Relayer start failed: $($_.Exception.Message)"
+    Set-ServiceStatus "Relayer" "Failed" "" $_.Exception.Message
+  }
 }
 
 # ---- Prisma ----
@@ -1203,6 +1237,9 @@ try {
   if (Test-PortInUse $webPort) {
     $stopped = Resolve-ProcessByPortIfOwned $webPort "Web" $projectRoot
     if (-not $stopped) {
+      $stopped = Resolve-ProcessByPortForce $webPort "Web"
+    }
+    if (-not $stopped) {
       $fallback = Find-FreePort ($webPort + 1) 3
       if ($fallback -gt 0) {
         Write-Warn "Web port $webPort in use. Starting on fallback port $fallback."
@@ -1235,13 +1272,38 @@ catch {
 if (-not $SkipSubquery) {
   try {
     $subqueryDir = Join-Path $root "subquery"
+    $queryPort = 3001
+    if ($env:SUBQUERY_QUERY_PORT) { [int]::TryParse($env:SUBQUERY_QUERY_PORT, [ref]$queryPort) | Out-Null }
+
+    $nodePort = 3002
+    if ($env:SUBQUERY_NODE_PORT) { [int]::TryParse($env:SUBQUERY_NODE_PORT, [ref]$nodePort) | Out-Null }
+
+    if ($nodePort -eq $queryPort) {
+      $fallbackNodePort = if ($queryPort -eq 3000) { 3002 } else { 3000 }
+      Write-Warn "SUBQUERY_NODE_PORT ($nodePort) matches SUBQUERY_QUERY_PORT ($queryPort). Using node port $fallbackNodePort."
+      $nodePort = $fallbackNodePort
+    }
+
+    $configuredWebPort = 3000
+    if ($env:NEXT_PORT) {
+      [int]::TryParse($env:NEXT_PORT, [ref]$configuredWebPort) | Out-Null
+    }
+    elseif ($env:PORT) {
+      [int]::TryParse($env:PORT, [ref]$configuredWebPort) | Out-Null
+    }
+    if ($nodePort -eq $configuredWebPort) {
+      $fallbackNodePort = if ($configuredWebPort -eq 3000) { 3002 } else { $configuredWebPort + 1 }
+      Write-Warn "SUBQUERY_NODE_PORT ($nodePort) conflicts with Web port ($configuredWebPort). Using node port $fallbackNodePort."
+      $nodePort = $fallbackNodePort
+    }
+
     $subqlNodeRunning = Test-CommandLineRunning "subql-node" $subqueryDir
     $subqlQueryRunning = Test-CommandLineRunning "subql-query" $subqueryDir
 
     if ($subqlNodeRunning -and $subqlQueryRunning) {
       Write-Info "SubQuery already running. Skipping SubQuery start."
-      Set-ServiceStatus "SubQuery Node" "Ready" "localhost:3000" "pre-existing"
-      Set-ServiceStatus "SubQuery Query" "Ready" "localhost:3001" "pre-existing"
+      Set-ServiceStatus "SubQuery Node" "Ready" "localhost:$nodePort" "pre-existing"
+      Set-ServiceStatus "SubQuery Query" "Ready" "localhost:$queryPort" "pre-existing"
     }
     else {
       if (!(Test-Path (Join-Path $subqueryDir "node_modules"))) {
@@ -1272,15 +1334,6 @@ if (-not $SkipSubquery) {
         }
         Pop-Location
 
-        $queryPort = 3001
-        if ($env:SUBQUERY_QUERY_PORT) { [int]::TryParse($env:SUBQUERY_QUERY_PORT, [ref]$queryPort) | Out-Null }
-        $nodePort = 3000
-        if ($env:SUBQUERY_NODE_PORT) { [int]::TryParse($env:SUBQUERY_NODE_PORT, [ref]$nodePort) | Out-Null }
-        if ($nodePort -eq $queryPort) {
-          $fallbackNodePort = if ($queryPort -eq 3000) { 3002 } else { 3000 }
-          Write-Warn "SUBQUERY_NODE_PORT ($nodePort) matches SUBQUERY_QUERY_PORT ($queryPort). Using node port $fallbackNodePort."
-          $nodePort = $fallbackNodePort
-        }
         $subqueryName = if ($env:SUBQUERY_NAME) { $env:SUBQUERY_NAME } else { "remitchain-indexer" }
 
         if (-not $subqlNodeRunning) {

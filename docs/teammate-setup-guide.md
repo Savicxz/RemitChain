@@ -12,7 +12,8 @@ Current hub Tailscale IP:
 
 ## Identity Rules (Important)
 - Each teammate must use a unique `DEV_IDENTITY` from `config/dev-identities.json`.
-- Do not share identities (`alice` and `bob` should not be used by two people at once).
+- Current identities: `JASPER`, `EROS`, `JENN`.
+- Do not share identities (one teammate per identity at a time).
 - Identity mapping prevents nonce/account collisions.
 
 ## Option A: Windows Local Setup (Recommended)
@@ -37,7 +38,7 @@ Copy-Item .env.codespaces.example .env.local
 Edit `.env.local` and set:
 - `CHAIN_MODE=remote`
 - `REMOTE_DEV_STRICT=true`
-- `DEV_IDENTITY=<alice-or-bob>`
+- `DEV_IDENTITY=<JASPER-or-EROS-or-JENN>`
 - `REMOTE_STATUS_URL=http://100.97.178.5:8787/dev/status`
 - `RELAYER_URL=http://100.97.178.5:8787`
 - `SUBQUERY_GRAPHQL_URL=http://100.97.178.5:3001`
@@ -59,6 +60,58 @@ npm run dev:remote
 
 Open local app URL shown by Next.js (usually `http://localhost:3000`).
 
+----------------------------------------------------
+## Option A2: macOS Local Setup
+
+### 1) Prerequisites
+- Git
+- Node.js + npm
+- Tailscale connected to the same tailnet as hub
+
+Install with Homebrew (if needed):
+```bash
+brew update
+brew install git node
+brew install --cask tailscale
+```
+
+### 2) Clone and install
+```bash
+git clone https://github.com/Savicxz/RemitChain.git
+cd RemitChain
+npm install
+```
+
+### 3) Create local env for remote mode
+```bash
+cp .env.codespaces.example .env.local
+```
+
+Edit `.env.local` and set:
+- `CHAIN_MODE=remote`
+- `REMOTE_DEV_STRICT=true`
+- `DEV_IDENTITY=<JASPER-or-EROS-or-JENN>`
+- `REMOTE_STATUS_URL=http://100.97.178.5:8787/dev/status`
+- `RELAYER_URL=http://100.97.178.5:8787`
+- `SUBQUERY_GRAPHQL_URL=http://100.97.178.5:3001`
+
+### 4) Verify hub connectivity
+```bash
+curl -m 10 http://100.97.178.5:8787/dev/status
+```
+
+Expected:
+- JSON response
+- `health.chainReady` is `true`
+- `health.subqueryReady` is `true`
+
+### 5) Start app in remote mode
+```bash
+npm run dev:remote
+```
+
+Open local app URL shown by Next.js (usually `http://localhost:3000`).
+
 ## Option B: Codespaces Setup (For weaker laptops)
 
 ### 1) Create Codespace from repo
@@ -71,7 +124,7 @@ cp .env.codespaces.example .env.local
 ```
 
 Edit `.env.local`:
-- `DEV_IDENTITY=<alice-or-bob>`
+- `DEV_IDENTITY=<JASPER-or-EROS-or-JENN>`
 - `REMOTE_STATUS_URL=http://100.97.178.5:8787/dev/status`
 - `RELAYER_URL=http://100.97.178.5:8787`
 - `SUBQUERY_GRAPHQL_URL=http://100.97.178.5:3001`
@@ -130,6 +183,15 @@ curl.exe --max-time 10 http://100.97.178.5:8787/dev/status
 ### `DEV_IDENTITY` rejected
 - Make sure identity exists in `config/dev-identities.json`.
 - Ensure no teammate is using the same identity simultaneously.
+
+### `ioredis ECONNREFUSED` on teammate laptop
+- Cause: outdated startup script started local relayer in remote mode.
+- Fix: pull latest repo, then restart.
+- Quick cleanup on Windows:
+```powershell
+Get-Process node -ErrorAction SilentlyContinue | Stop-Process -Force
+npm run dev:remote
+```
 
 ## Ready Checklist
 - Tailscale connected.
