@@ -4,20 +4,21 @@
      {
       "id": "JASPER",
       "devIndex": 0,
-      "address": "5Ejk1jYitjzef2h36qDd4qnZZBCyLY8sN7ztciqrC98otXpf",
+      "address": "5FKxrLQM24ZhLxcaQfJR3uMxMZh5gU6E4CP3yghPJLzCDnHN",
       "seed": "//Alice/0"
     },
     {
       "id": "EROS",
       "devIndex": 1,
-      "address": "5FKxrLQM24ZhLxcaQfJR3uMxMZh5gU6E4CP3yghPJLzCDnHN",
+      "address": "5FUdx3xPJdh2ZdD7DwPQRN2eMAFVUKpfPeoEZZiSraow9iVQ",
       "seed": "//Alice/1"
     },
     {
       "id": "JENN",
       "devIndex": 2,
-      "address": "5FUdx3xPJdh2ZdD7DwPQRN2eMAFVUKpfPeoEZZiSraow9iVQ",
+      "address": "5Ejk1jYitjzef2h36qDd4qnZZBCyLY8sN7ztciqrC98otXpf",
       "seed": "//Alice/2"
     }
   ]
 }
+
