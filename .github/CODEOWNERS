@@ -1,0 +1,8 @@
+# Default owner for all changes
+* @Savicxz
+
+# Critical paths
+.github/workflows/* @Savicxz
+chain/** @Savicxz
+services/relayer/** @Savicxz
+subquery/** @Savicxz
