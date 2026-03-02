@@ -14,6 +14,8 @@ jobs:
     name: Web (Typecheck + Build)
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/remitchain?schema=public
     steps:
       - name: Checkout
         uses: actions/checkout@v4
