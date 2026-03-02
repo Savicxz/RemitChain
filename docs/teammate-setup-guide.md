@@ -199,6 +199,42 @@ Get-Process node -ErrorAction SilentlyContinue | Stop-Process -Force
 npm run dev:remote
 ```
 
+## Dev KYC Tier Override (Local/Remote Dev Only)
+For testing compliance UI and limits without a real KYC provider, use:
+- `POST /api/dev/kyc-tier`
+- Disabled automatically in `production`.
+- If `INTERNAL_API_KEY` is set, include `x-api-key` header.
+
+Payload:
+```json
+{
+  "address": "5F... or 0x...",
+  "kycTier": 2
+}
+```
+
+Windows example:
+```powershell
+curl.exe -X POST http://localhost:3000/api/dev/kyc-tier `
+  -H "Content-Type: application/json" `
+  -d "{\"address\":\"5F...\",\"kycTier\":2}"
+```
+
+macOS/Linux example:
+```bash
+curl -X POST http://localhost:3000/api/dev/kyc-tier \
+  -H "Content-Type: application/json" \
+  -d '{"address":"5F...","kycTier":2}'
+```
+
+With API key header (if configured):
+```bash
+curl -X POST http://localhost:3000/api/dev/kyc-tier \
+  -H "Content-Type: application/json" \
+  -H "x-api-key: <INTERNAL_API_KEY>" \
+  -d '{"address":"5F...","kycTier":3}'
+```
+
 ## Ready Checklist
 - Tailscale connected.
 - `/dev/status` reachable from teammate machine.
