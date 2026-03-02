@@ -1,0 +1,83 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  web:
+    name: Web (Typecheck + Build)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Prisma client
+        run: npm run prisma:generate
+
+      - name: Typecheck
+        run: npm exec tsc --noEmit
+
+      - name: Build Next.js app
+        run: npm run build
+
+  relayer:
+    name: Relayer (Build)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: services/relayer/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci --prefix services/relayer
+
+      - name: Build relayer
+        run: npm run build --prefix services/relayer
+
+  subquery:
+    name: SubQuery (Codegen + Build)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: subquery/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci --prefix subquery
+
+      - name: Codegen
+        run: npm run codegen --prefix subquery
+
+      - name: Build subquery project
+        run: npm run build --prefix subquery

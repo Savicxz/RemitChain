@@ -92,6 +92,23 @@ We welcome contributions from the community! Whether it's reporting bugs, sugges
 - `scripts\start-dev.cmd` - Start all services
 - `scripts\clean-dev.cmd` - Clean workspace and re-install
 
+## CI/CD (GitHub Actions)
+- CI workflow: `.github/workflows/ci.yml`
+  - Runs on PRs and pushes to `main`.
+  - Validates:
+    - Web typecheck + build
+    - Relayer build
+    - SubQuery codegen + build
+- CD workflow: `.github/workflows/cd.yml`
+  - Runs on tags matching `build-*` (and manual dispatch).
+  - Builds web/relayer/subquery artifacts and publishes a GitHub release for tag runs.
+
+Create a release tag:
+```bash
+git tag -a build-YYYY-MM-DD-<shortsha> -m "Release build"
+git push origin build-YYYY-MM-DD-<shortsha>
+```
+
 ## Docs
 See `docs/truth.md` for the source-of-truth specification and `docs/plan.md` for the roadmap.
 See `docs/remote-dev.md` for the shared VM + Codespaces runbook.
