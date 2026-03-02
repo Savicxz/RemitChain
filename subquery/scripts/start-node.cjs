@@ -2,7 +2,17 @@
 const { spawn } = require('child_process');
 
 const schema = process.env.SUBQUERY_NAME || 'remitchain-indexer';
-const args = ['subql-node', '-f', 'project.ts', '--db-schema', schema, ...process.argv.slice(2)];
+const port = process.env.SUBQUERY_NODE_PORT || '3002';
+const args = [
+  'subql-node',
+  '-f',
+  'project.ts',
+  '--db-schema',
+  schema,
+  '--port',
+  port,
+  ...process.argv.slice(2),
+];
 
 const quoted = args
   .map((part) => {
